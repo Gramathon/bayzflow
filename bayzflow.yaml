@@ -1,0 +1,90 @@
+bayzflow:
+  # Which experiment to use by default
+  default_experiment: "fx_blstm_jpyx"
+
+  experiments:
+    # ============================
+    #  FX / Bayesian LSTM demo
+    # ============================
+    fx_blstm_jpyx:
+      kind: "fx"   # this script will only run experiments with kind == "fx"
+
+      data:
+        module: "examples.fx.fx_utils.fx_dataloader.FXDataset"
+        ticker: "JPY=X"
+        period: "60d"
+        interval: "15m"
+        seq_len: 80
+        train_frac: 0.7
+        val_frac: 0.15
+
+      model:
+        type: "blstm"
+        module: "models.blstm.BayesianLSTM"
+        hidden_size: 128
+        prior_scale_lstm: 1.0
+        prior_scale_head: 2.0
+
+      device: "cuda:1"
+
+      guide:
+        kind: "auto_lowrank"   # auto_lowrank | auto_normal | auto_diag
+        kwargs:
+          rank: 16
+
+      training:
+        epochs: 500
+        batch_size: 20
+        lr: 5.0e-4
+        patience: 30
+        svi_loss: "trace_elbo"
+        retain_graph: true
+
+      posterior:
+        num_samples: 200
+        forecast_steps: 4
+
+      checkpoints:
+        outdir: "checkpoints"
+        best_name: "pyro_lstm_best.pt"
+
+
+    # ==================================
+    #  Example: Text / BERT-style demo
+    #  (placeholder for later)
+    # ==================================
+    bert_toy_cls:
+      kind: "text"
+
+      data:
+        module: "text_utils.bert_dataset.BERTDataset"
+        train_path: "data/text/train.csv"
+        val_path: "data/text/val.csv"
+        text_col: "text"
+        label_col: "label"
+        max_length: 128
+
+      model:
+        type: "bert_classifier"
+        module: "models.bert.BayesianBERTClassifier"
+        pretrained_name: "bert-base-uncased"
+        hidden_size: 768
+
+      guide:
+        kind: "auto_diag"
+        kwargs: {}
+
+      training:
+        epochs: 3
+        batch_size: 16
+        lr: 2.0e-5
+        patience: 2
+        svi_loss: "trace_elbo"
+        retain_graph: false
+
+      posterior:
+        num_samples: 50
+
+      checkpoints:
+        outdir: "checkpoints_bert"
+        best_name: "bert_bayes_best.pt"

@@ -1,0 +1,241 @@
+# Bayzflow Specification (v0.1)
+
+## 1. Overview
+
+Bayzflow is a **model-agnostic Bayesian wrapper** designed to add:
+
+* **Posterior sampling** for epistemic & aleatoric uncertainty
+* **Latent state extraction** from any PyTorch model
+* **Kalman/state-space filtering** over latent trajectories
+
+It enables deep models to:
+
+* Quantify uncertainty in predictions
+* Expose internal "belief" vectors
+* Track and smooth those beliefs over time
+* Predict future latent dynamics
+
+Bayzflow works with:
+
+* LSTMs / CNNs / Transformers
+* Time series (FX, stocks)
+* Text (BERT-based idea trajectories)
+* Vision (planned)
+
+---
+
+## 2. Architecture
+
+Bayzflow consists of three core abstractions:
+
+### 2.1 BayesianWrapper
+
+Wraps any `nn.Module` with a Pyro model + guide.
+
+**Responsibilities:**
+
+* Define priors on model components
+* Train via SVI (or MCMC later)
+* Sample posterior via Predictive
+* Compute uncertainty decomposition
+
+**Key API:**
+
+```python
+class BayesianWrapper:
+    def __init__(self, model, pyro_model, pyro_guide_factory, device="cpu"): ...
+    def fit(self, train_loader, num_epochs, lr, **kwargs): ...
+    def sample_posterior(self, batch, num_samples, return_latent=False): ...
+    def uncertainty_report(self, y_samples, y_obs=None): ...
+    def load_state(self, path): ...
+```
+
+---
+
+### 2.2 LatentExtractor
+
+Defines how a latent state vector `z_t` is obtained from a model.
+
+Examples:
+
+* LSTM → final hidden state
+* BERT → CLS/pooler output
+* CNN → penultimate feature vector
+
+**Simple callable:**
+
+```python
+class LatentExtractor(Protocol):
+    def __call__(self, model, batch) -> torch.Tensor:
+        pass
+```
+
+---
+
+### 2.3 KalmanLatentFilter
+
+State-space filtering and prediction over latent vectors.
+
+**Responsibilities:**
+
+* Smooth noisy latent trajectories
+* Estimate latent uncertainty over time
+* Provide predictive latent dynamics
+
+**API:**
+
+```python
+class KalmanLatentFilter:
+    def __init__(self, Q=1e-4, x0=0.0, P0=1e-2): ...
+    def run(self, z_mean, z_var) -> LatentSeries: ...
+
+@dataclass
+class LatentSeries:
+    mean: torch.Tensor
+    std: torch.Tensor
+    regime: Optional[torch.Tensor] = None
+```
+
+---
+
+## 3. Data Flow
+
+```text
+PyTorch model → BayesianWrapper → posterior samples → latent extractor →
+(z_mean, z_var) → KalmanLatentFilter → smoothed latent dynamics
+```
+
+---
+
+## 4. Example Workflows
+
+### FX Prediction Workflow
+
+1. Train LSTM under BayesianWrapper
+2. Sample predictive returns + uncertainty
+3. Extract latent drift vector
+4. Kalman smooth latent drift
+5. Plot:
+
+   * Predicted return band
+   * P(up)
+   * Latent drift trajectory
+
+### BERT Idea Trajectory Workflow
+
+1. Use pretrained BERT + Bayesian classification head
+2. Feed input prefixes
+3. Sample posterior for each prefix
+4. Extract latent pooled embedding
+5. Kalman smooth latent idea state
+6. Plot idea trajectory as text unfolds
+
+---
+
+# Bayzflow README (Draft)
+
+# 🌊 Bayzflow
+
+**Bayesian Uncertainty + Latent State Dynamics for Any PyTorch Model**
+
+Bayzflow lets you wrap any deep learning model with:
+
+* Bayesian posterior sampling (via Pyro)
+* Epistemic & aleatoric uncertainty estimates
+* Latent state extraction
+* Kalman/state-space filtering on internal representations
+
+It turns ordinary neural networks into **interpretable state-space systems**.
+
+---
+
+## ✨ Features
+
+* 🔄 Wrap any PyTorch model with Bayesian inference
+* 🧠 Estimate epistemic & aleatoric uncertainty
+* 🪞 Extract latent state vectors from hidden layers
+* 📉 Track latent states with Kalman filtering
+* 🔮 Predict future latent dynamics
+* 📊 Ready-made demos for FX forecasting + BERT idea trajectories
+
+---
+
+## 🚀 Quick Start
+
+```python
+from bayzflow import BayesianWrapper, KalmanLatentFilter
+
+wrapper = BayesianWrapper(model, pyro_model, pyro_guide_factory)
+wrapper.fit(train_loader, num_epochs=50)
+
+samples = wrapper.sample_posterior(batch, num_samples=128, return_latent=True)
+report = wrapper.uncertainty_report(samples["y_samples"], y_obs)
+
+kf = KalmanLatentFilter()
+latent_smoothed = kf.run(samples["latent_mean"], samples["latent_var"])
+```
+
+---
+
+## 📈 Examples
+
+### 1. FX Drift Forecasting
+
+See `examples/fx_bayzflow_demo.py`.
+
+* Bayesian LSTM forecasting
+* P(up) and return uncertainty
+* Latent drift + Kalman smoothing
+
+### 2. BERT Idea Trajectories
+
+See `examples/bert_bayzflow_prefix_demo.py`.
+
+* Bayesian head on BERT embeddings
+* Posterior sampling for each prefix
+* Latent embedding → 1D projection → Kalman smoothing
+
+Produces plots like:
+
+* Idea drift as a sentence unfolds
+* Uncertainty bands over sentiment
+
+---
+
+## 🧩 Why Bayzflow?
+
+Neural networks have hidden beliefs.
+Bayzflow:
+
+* makes them **probabilistic**,
+* exposes their **latent state**, and
+* tracks that state over time.
+
+This enables:
+
+* Regime detection in time series
+* Interpretability for Transformers
+* Hallucination monitoring
+* Smooth latent reasoning paths
+
+---
+
+## 📦 Installation
+
+Coming soon to PyPI.
+
+---
+
+## 🛠 Roadmap
+
+* Particle filtering support
+* Bayesian attention layers
+* Multi-dimensional latent Kalman smoothing
+* Vision transformer demos
+* PyTorch Lightning integration
+
+---
+
+## 📝 License
+
+MIT
