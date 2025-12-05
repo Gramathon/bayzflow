@@ -35,6 +35,7 @@ import torch.nn.functional as F
 
 import pyro
 import pyro.distributions as dist
+import pyro.nn as pnn
 from pyro.nn import PyroModule, PyroSample
 from pyro.infer import SVI, Trace_ELBO
 from pyro.infer.autoguide import AutoLowRankMultivariateNormal
@@ -44,7 +45,6 @@ from pyro.infer import Predictive
 # ============================================================================
 # 1. Module information / discovery
 # ============================================================================
-
 
 @dataclass
 class ModuleInfo:
@@ -102,7 +102,24 @@ def print_candidates(candidates: Sequence[ModuleInfo]) -> None:
 # ============================================================================
 # 2. Module tree / map
 # ============================================================================
+def make_pyro_module_tree(module: nn.Module, prefix: str = ""):
+    """
+    Recursively convert any nn.Module tree into a PyroModule tree,
+    but DO NOT convert leaf layers we want to discover (Linear/Conv/Norm).
+    """
+    # If this module is one of the leaf candidate types, leave it as nn.Module.
+    if isinstance(module, _DEFAULT_INCLUDE_TYPES):
+        return
 
+    # Otherwise convert this module to a PyroModule if not already
+    if not isinstance(module, pnn.PyroModule):
+        new = pnn.PyroModule()
+        new.__dict__.update(module.__dict__)
+        module.__class__ = pnn.PyroModule  # mutate type in-place
+
+    # Recurse over children
+    for name, child in module.named_children():
+        make_pyro_module_tree(child, prefix + name + ".")
 
 def build_module_tree(model: nn.Module) -> Dict:
     """
@@ -380,20 +397,12 @@ def wrap_module_with_prior(
     else:
         return module  # not wrapped
 
-
 def attach_priors(
     model: nn.Module,
     selected_names: Sequence[str],
     prior_scale: float = 0.1,
     per_layer_scale: Optional[Dict[str, float]] = None,
 ) -> nn.Module:
-    """
-    Replace selected submodules in the model with Bayesian PyroModules,
-    attaching Normal priors centred at existing weights.
-
-    Note: the root model can remain a plain nn.Module; the selected
-    submodules become PyroModules with PyroSample parameters.
-    """
     per_layer_scale = per_layer_scale or {}
 
     for full_name in selected_names:
@@ -409,6 +418,10 @@ def attach_priors(
                 f"not wrapped (unsupported)."
             )
         else:
+            # 🔥 Give the Bayesian wrapper a unique Pyro name
+            if isinstance(wrapped, PyroModule):
+                wrapped._pyro_name = full_name
+
             setattr(parent, child_name, wrapped)
 
     return model
@@ -505,16 +518,18 @@ class BayzFlow:
         - Monte Carlo inference (uncertainty)
         - Online posterior tightening from human feedback
     """
-
     def __init__(self, model: nn.Module):
+        # Keep the base model as a normal nn.Module.
+        # Only the wrapped Bayesian layers will be PyroModules.
         self.base_model = model
-        self.bayes_model: Optional[PyroModule] = None
-        self.selected_module_names: List[str] = []
-        self.prior_scales: Dict[str, float] = {}
-        self.guide: Optional[AutoLowRankMultivariateNormal] = None
+
+        self.bayes_model = None
+        self.selected_module_names = []
+        self.prior_scales = {}
+        self.guide = None
         self.optimizer = None
-        self.svi: Optional[SVI] = None
-        self._pyro_model: Optional[Callable] = None  # model(batch) used by SVI
+        self.svi = None
+        self._pyro_model = None
 
     # --- inspection helpers ---
 

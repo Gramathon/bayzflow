@@ -65,7 +65,7 @@ def build_resnet18_cifar10(batch_size: int = 8):
     )
 
     # For a quick demo we use small subsets
-    train_subset = Subset(train_ds, range(0, 4048))
+    train_subset = Subset(train_ds, range(0, 5048))
     calib_subset = Subset(test_ds, range(0, 1012))
 
     train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
@@ -144,6 +144,29 @@ def main():
     # ---- Step 2: list candidate modules with indices ----
     print("\n=== [2] CANDIDATE LAYERS (with indices) ===")
     candidates = bf.list_candidates()
+
+    if not candidates:
+        raise RuntimeError("No candidate modules found – check include_types / model definition.")
+
+    # Simple heuristic: suggest the last candidate
+    suggested_idx = len(candidates) - 1
+
+    # Guard against out-of-range
+    if suggested_idx < 0 or suggested_idx >= len(candidates):
+        print("[BayzFlow] No valid suggested index, falling back to manual selection.")
+        suggested_idx = None
+    else:
+        print(
+            f"Suggested Bayesian layer index: {suggested_idx} "
+            f"({candidates[suggested_idx].name})"
+        )
+
+    # When selecting modules:
+    if suggested_idx is not None:
+        selected = bf.select_modules(candidates, select=[suggested_idx])
+    else:
+        # fallback – e.g. select by name patterns
+        selected = bf.select_modules(candidates, patterns=["head", "layer4.1", "fc"])
     print("\n=== [User Selection] Choose Bayesian layers ===")
 
     # Suggest index for "fc" or the last Linear layer
@@ -201,16 +224,16 @@ def main():
     # Option B: select manually by index after looking at printed list.
     # For a first run, we just Bayesianise the final classifier head.
     # Find the index where name == "fc":
-    fc_idx = None
-    for idx, info in enumerate(candidates):
-        if info.name == "fc":
-            fc_idx = idx
-            break
-    if fc_idx is None:
-        raise RuntimeError("Could not find 'fc' in candidates; check list_candidates output.")
+    #fc_idx = None
+    #for idx, info in enumerate(candidates):
+    #    if info.name == "fc":
+    #        fc_idx = idx
+    #        break
+    #if fc_idx is None:
+    #    raise RuntimeError("Could not find 'fc' in candidates; check list_candidates output.")
 
-    print(f"\n[BayzFlow] Using candidate index {fc_idx} ('fc') as Bayesian layer.")
-    selected_names = bf.select_modules(candidates, select=[fc_idx])
+    #print(f"\n[BayzFlow] Using candidate index {fc_idx} ('fc') as Bayesian layer.")
+    #selected_names = bf.select_modules(candidates, select=[fc_idx])
 
     # ---- Step 4: define calib_forward_fn, loss_fn, predict_fn ----
 
@@ -255,7 +278,7 @@ def main():
     bf.fit(
         train_loader=train_loader,
         loss_fn=loss_fn,
-        num_epochs=50,         # keep small for demo
+        num_epochs=500,         # keep small for demo
         device=device,
     )
 
