@@ -42,6 +42,11 @@ layer_names.npy
 *.pt
 *.pth
 *.ckpt
+*.tar.gz
+*.zip
+*.pth
+*.npy
+*.npz
 
 # Coding agent files
 AGENTS.md
