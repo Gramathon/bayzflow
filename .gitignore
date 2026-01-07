@@ -1,0 +1,53 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE/editor files
+.vscode/
+.idea/
+.DS_Store
+
+# Data, checkpoints, and artifacts
+data/
+bayzflow/data/
+checkpoints/
+bayzflow/checkpoints/
+checkpoints_monai_swin/
+bayz_artifacts/
+bayzflow/bayz_artifacts/
+monai_artifacts/
+latent_dump/
+volumes/
+layer_names.npy
+*.pt
+*.pth
+*.ckpt
+
+# Coding agent files
+AGENTS.md
+CLAUDE.md
+.codex/
+.claude/
+.cursor/
+.aider/
+.windsurf/

@@ -1,0 +1,205 @@
+bayzflow:
+  # Which experiment to use by default
+  default_experiment: "fx_blstm_jpyx"
+
+  experiments:
+    # ============================
+    #  FX / Bayesian LSTM demo
+    # ============================
+    fx_blstm_jpyx:
+      kind: "fx"   # this script will only run experiments with kind == "fx"
+
+      data:
+        module: "examples.fx.fx_utils.fx_dataloader.FXDataset"
+        ticker: "JPY=X"
+        period: "60d"
+        interval: "15m"
+        seq_len: 80
+        train_frac: 0.7
+        val_frac: 0.15
+
+      model:
+        type: "blstm"
+        module: "models.blstm.BayesianLSTM"
+        input_size: 27
+        hidden_size: 128
+        prior_scale_lstm: 1.0
+        prior_scale_head: 2.0
+
+      device: "cuda:1"
+
+      guide:
+        kind: "auto_lowrank"   # auto_lowrank | auto_normal | auto_diag
+        kwargs:
+          rank: 16
+
+      training:
+        epochs: 2
+        batch_size: 20
+        lr: 5.0e-4
+        patience: 30
+        svi_loss: "trace_elbo"
+        retain_graph: true
+
+      posterior:
+        num_samples: 200
+        forecast_steps: 4
+
+      checkpoints:
+        outdir: "checkpoints"
+        best_name: "pyro_lstm_best.pt"
+
+
+    # ==================================
+    #  Example: Text / BERT-style demo
+    #  (placeholder for later)
+    # ==================================
+    bert_toy_cls:
+      kind: "text"
+
+      data:
+        module: "text_utils.bert_dataset.BERTDataset"
+        train_path: "data/text/train.csv"
+        val_path: "data/text/val.csv"
+        text_col: "text"
+        label_col: "label"
+        max_length: 128
+
+      model:
+        type: "bert_classifier"
+        module: "models.bert.BayesianBERTClassifier"
+        pretrained_name: "bert-base-uncased"
+        hidden_size: 768
+
+      guide:
+        kind: "auto_diag"
+        kwargs: {}
+
+      training:
+        epochs: 3
+        batch_size: 16
+        lr: 2.0e-5
+        patience: 2
+        svi_loss: "trace_elbo"
+        retain_graph: false
+
+      posterior:
+        num_samples: 50
+
+      checkpoints:
+        outdir: "checkpoints_bert"
+        best_name: "bert_bayes_best.pt"
+
+
+    # ======================================
+    #  MONAI 3D U-Net for medical imaging
+    # ======================================
+    monai_unet_3d:
+      kind: "monai_segmentation"
+
+      data:
+        module: "examples.monai_examples.monai_dataset.MonaiDataset"
+        data_dir: "data/medical/decathlon"
+        task: "Task01_BrainTumour"
+        section: "training"
+        download: true
+        cache_rate: 0.5
+        num_workers: 2
+        spatial_size: [64, 64, 64]
+        train_frac: 0.7
+        val_frac: 0.15
+
+      model:
+        type: "monai_unet_3d"
+        module: "models.monai_unet.BayesianMonaiUNet"
+        spatial_dims: 3
+        in_channels: 4
+        out_channels: 4
+        channels: [16, 32, 64, 128, 256, 16]
+        strides: [2, 2, 2, 2]
+        num_res_units: 2
+        norm: "INSTANCE"
+        dropout: 0.1
+
+      device: "cuda:1"
+
+      guide:
+        kind: "auto_normal"
+        kwargs: {}
+
+      training:
+        epochs: 10
+        batch_size: 2
+        lr: 1.0e-4
+        patience: 5
+        svi_loss: "trace_elbo"
+        retain_graph: true
+        bayes_patterns: ["final_conv", "upcat"]
+
+      posterior:
+        num_samples: 16
+        save_latents: true
+        save_path: "monai_artifacts/posterior_latents.pt"
+        forecast_steps: 1
+
+      checkpoints:
+        outdir: "checkpoints_monai"
+        best_name: "monai_unet_best.pt"
+
+
+    # ======================================
+    #  MONAI SwinUNETR with Pretrained Encoder (SVI-Only)
+    # ======================================
+    monai_swin_unetr_pretrained:
+      kind: "monai_segmentation"
+
+      data:
+        module: "examples.monai_examples.monai_dataset.MonaiDataset"
+        data_dir: "data/medical/decathlon"
+        task: "Task09_Spleen" #"Task01_BrainTumour"
+        section: "training"
+        download: true
+        cache_rate: 0.5
+        num_workers: 2
+        spatial_size: [96, 96, 96]
+        train_frac: 0.7
+        val_frac: 0.15
+
+      model:
+        type: "swin_unetr"
+        module: "models.swin_unetr.BayesianSwinUNETR"
+        img_size: [96, 96, 96]
+        in_channels: 1
+        out_channels: 1
+        feature_size: 48
+        use_checkpoint: false
+        spatial_dims: 3
+        pretrained: true
+        pretrained_path: "bayzflow/models/model.pt"  # Set to path of pretrained weights or null to skip
+        freeze_encoder: true
+
+      device: "cpu"
+
+      guide:
+        kind: "auto_normal"
+        kwargs: {}
+
+      training:
+        epochs: 200
+        batch_size: 2
+        lr: 5.0e-4
+        patience: 8
+        svi_loss: "trace_elbo"
+        retain_graph: true
+        # Only bayesianize decoder and output layers (encoder is frozen and pretrained)
+        bayes_patterns: ["decoder", "head", "out"]
+
+      posterior:
+        num_samples: 16
+        save_latents: true
+        save_path: "monai_artifacts/swin_unetr_posterior_latents.pt"
+        forecast_steps: 1
+
+      checkpoints:
+        outdir: "checkpoints_monai_swin"
+        best_name: "swin_unetr_best.pt"
