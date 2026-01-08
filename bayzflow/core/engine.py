@@ -995,8 +995,12 @@ class BayzFlow:
 
         # 2) variation across the batch for a fixed MC sample (only if batch size > 1)
         if stacked.shape[1] > 1:
-            print("max diff across batch for sample 0:",
-                (stacked[0, 0, :] - stacked[0, 1, :]).abs().max().item())
+        # compare item 0 vs all other items in the batch (for one MC sample)
+            diffs = (stacked[0, 0, :] - stacked[0, 1:, :]).abs().max(dim=-1).values  # [B-1]
+            print("max diff across batch (sample 0, item0 vs others):", diffs.max().item())
+            print("num identical-to-item0:", int((diffs == 0).sum().item()), "/", diffs.numel())
+
+        
         mean = stacked.mean(dim=0)
         std = stacked.std(dim=0)
 
