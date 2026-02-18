@@ -772,16 +772,11 @@ class BayzFlow:
     # --- training (SVI) ---
 
     def setup_svi(
-        self,
-        loss_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],
-        lr: float = 1e-3,
-    ):
-        """
-        Setup SVI with a proper Pyro model embedding loss_fn.
-
-        loss_fn(model, batch) must return a scalar negative log-likelihood
-        (or any loss you want to minimise).
-        """
+            self,
+            loss_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],
+            predict_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],
+            lr: float = 1e-3,
+        ):
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built. Call build_bayesian_model() first.")
 
@@ -790,13 +785,16 @@ class BayzFlow:
 
         def pyro_model(batch):
             pyro.module("bayes_model", model, update_module_params=False)
+
             logits = predict_fn(model, batch)
             pyro.deterministic("logits", logits)
-            nll = loss_fn(model, batch)   # should be consistent with logits
+
+            nll = loss_fn(model, batch)
             pyro.factor("nll", -nll)
+
             return logits
 
-
+        
         self._pyro_model = pyro_model
         self.guide = AutoNormal(self._pyro_model)
         #self.guide = AutoLowRankMultivariateNormal(self._pyro_model)
@@ -1030,6 +1028,7 @@ class BayzFlow:
         train_loader: torch.utils.data.DataLoader,
         calib_forward_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],
         loss_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],
+        predict_fn: Callable[[nn.Module, Dict[str, torch.Tensor]], torch.Tensor],  # <-- ADD THIS
         bayes_patterns: Sequence[str],
         num_calib_passes: int = 3,
         calib_percentile: float = 0.9,
@@ -1073,7 +1072,7 @@ class BayzFlow:
 
         if verbose:
             print("\n[BayzFlow] Starting SVI training...")
-        engine.setup_svi(loss_fn=loss_fn, lr=lr)
+        engine.setup_svi(loss_fn=loss_fn, predict_fn=predict_fn, lr=lr)
         engine.fit(
             train_loader=train_loader,
             loss_fn=loss_fn,
