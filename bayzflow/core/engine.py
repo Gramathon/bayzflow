@@ -789,15 +789,13 @@ class BayzFlow:
         model = self.bayes_model
 
         def pyro_model(batch):
-            """
-            Pyro model for SVI: runs the Bayesian model and applies loss_fn.
-            The Bayesian layers create latent sites via PyroSample; loss_fn
-            contributes a factor corresponding to -NLL.
-            """
             pyro.module("bayes_model", model, update_module_params=False)
-            nll = loss_fn(model, batch)
+            logits = predict_fn(model, batch)
+            pyro.deterministic("logits", logits)
+            nll = loss_fn(model, batch)   # should be consistent with logits
             pyro.factor("nll", -nll)
-            return nll
+            return logits
+
 
         self._pyro_model = pyro_model
         self.guide = AutoNormal(self._pyro_model)
@@ -939,7 +937,6 @@ class BayzFlow:
             print(f"[BayzFlow] Feedback epoch {epoch+1}/{num_epochs}  ELBO: {avg_loss:.4f}")
 
     # --- inference ---
-
     def predict(
         self,
         batch: Dict[str, torch.Tensor],
@@ -950,11 +947,7 @@ class BayzFlow:
         save_posterior_latents: bool = False,
         posterior_save_path: Optional[str] = None,
     ) -> Dict[str, torch.Tensor]:
-        """
-        Monte Carlo predictive inference with uncertainty.
 
-        predict_fn(model, batch) -> prediction tensor (e.g. logits, masks, etc.)
-        """
         if self.bayes_model is None or self.guide is None or self._pyro_model is None:
             raise RuntimeError("Bayesian model/guide not initialised.")
 
@@ -964,61 +957,22 @@ class BayzFlow:
             batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
 
         model.eval()
-        samples = []
-        latent_samples = [] if save_posterior_latents else None
+        self.guide.eval()
 
-        # We'll use Predictive to sample posterior parameter sets, but it's
-        # easiest with the autoguide directly:
-        # For global-latent autoguides, guide(batch) returns a sample dict
-        # that can be used to condition the model parameters.
-        for i in range(num_samples):
-            # guide requires an input; for global latents it's usually ignored,
-            # so using this same batch is fine.
-            latent_sample = self.guide(batch)
-            
-            # Save latent samples if requested
-            if save_posterior_latents:
-                latent_samples.append({k: v.detach().cpu() for k, v in latent_sample.items()})
-            
-            lifted_model = pyro.poutine.condition(model, data=latent_sample)
+        predictive = Predictive(self._pyro_model, guide=self.guide, num_samples=num_samples, return_sites=["logits"])
+        with torch.no_grad():
+            samp = predictive(batch)              # dict of sites
+        stacked = samp["logits"]                  # [S,B,K]
 
-            with torch.no_grad():
-                pred = predict_fn(lifted_model, batch)
-            samples.append(pred.detach())
-
-        stacked = torch.stack(samples, dim=0)  # [S, ...]
-        print("stacked shape:", stacked.shape)
-
-        # 1) variation across MC samples for a fixed image
-        print("max diff across samples for sample[0]:",
-            (stacked[:, 0, :] - stacked[0, 0, :]).abs().max().item())
-
-        # 2) variation across the batch for a fixed MC sample (only if batch size > 1)
-        if stacked.shape[1] > 1:
-        # compare item 0 vs all other items in the batch (for one MC sample)
-            diffs = (stacked[0, 0, :] - stacked[0, 1:, :]).abs().max(dim=-1).values  # [B-1]
-            print("max diff across batch (sample 0, item0 vs others):", diffs.max().item())
-            print("num identical-to-item0:", int((diffs == 0).sum().item()), "/", diffs.numel())
-
-        
-        mean = stacked.mean(dim=0)
-        std = stacked.std(dim=0)
+        mean = stacked.mean(0)
+        std  = stacked.std(0, unbiased=False)
 
         out = {"mean": mean, "std": std}
         if return_samples:
             out["samples"] = stacked
-        
-        # Save posterior latents if requested
-        if save_posterior_latents and latent_samples:
-            if posterior_save_path:
-                os.makedirs(os.path.dirname(posterior_save_path), exist_ok=True)
-                torch.save(latent_samples, posterior_save_path)
-                print(f"[BayzFlow] Saved {len(latent_samples)} posterior latent samples to {posterior_save_path}")
-            else:
-                out["posterior_latents"] = latent_samples
-                print(f"[BayzFlow] Included {len(latent_samples)} posterior latent samples in output")
-        
         return out
+
+
 
     # --- one-line helpers ---
 
