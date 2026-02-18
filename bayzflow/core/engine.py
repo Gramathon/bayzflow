@@ -14,6 +14,14 @@ Key features:
     - SVI training with a proper Pyro model
     - Monte Carlo predictive inference with uncertainty
 
+CRITICAL NOTE (fix for "Multiple sample sites named 'head.weight'"):
+    Your old pyro_model ran TWO forward passes per trace:
+        logits = predict_fn(model, batch)
+        nll    = loss_fn(model, batch)   # <-- loss_fn usually calls model(...) again
+    That causes PyroSample sites to be sampled twice in one trace, which is illegal.
+    This script enforces ONE forward pass per trace by using:
+        loss_from_logits_fn(logits, batch)
+
 Requires:
     torch
     pyro-ppl
@@ -24,7 +32,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
-import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -32,9 +39,7 @@ import torch.nn.functional as F
 
 import pyro
 import pyro.distributions as dist
-import pyro.nn as pnn
 from pyro.nn import PyroModule, PyroSample
-from pyro.nn.module import to_pyro_module_
 from pyro.infer import SVI, Trace_ELBO, Predictive
 from pyro.infer.autoguide import AutoNormal
 
@@ -112,6 +117,7 @@ class BayesLinear(PyroModule):
         self.in_features = base_linear.in_features
         self.out_features = base_linear.out_features
 
+        # Use the existing weights as prior means
         self.weight = PyroSample(dist.Normal(w_mean, prior_scale).to_event(2))
         self.bias = PyroSample(dist.Normal(b_mean, prior_scale).to_event(1)) if b_mean is not None else None
 
@@ -290,9 +296,8 @@ def calibrate_prior_scales(
     with torch.no_grad():
         for _ in range(num_passes):
             for batch in calib_loader:
-                if device is not None:
-                    if isinstance(batch, dict):
-                        batch = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in batch.items()}
+                if device is not None and isinstance(batch, dict):
+                    batch = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in batch.items()}
                 _ = forward_fn(model, batch)
 
     for h in hooks:
@@ -319,9 +324,9 @@ class BayzFlow:
         self.selected_module_names: List[str] = []
         self.prior_scales: Dict[str, float] = {}
 
-        self.guide = None
+        self.guide: Optional[AutoNormal] = None
         self.optimizer = None
-        self.svi = None
+        self.svi: Optional[SVI] = None
         self._pyro_model = None
 
     def list_candidates(self, exclude_names: Optional[Iterable[str]] = None) -> List[ModuleInfo]:
@@ -365,10 +370,8 @@ class BayzFlow:
         if not self.selected_module_names:
             raise RuntimeError("No modules selected.")
 
-        # ✅ CRITICAL FIX:
-        # Convert the whole tree to PyroModule so sample sites get proper hierarchical names.
-        to_pyro_module_(self.base_model)
-
+        # Important: do NOT force-convert the whole tree to PyroModule.
+        # Your wrapped layers already provide PyroSample sites and will be named by their module path.
         self.bayes_model = attach_priors(
             model=self.base_model,
             selected_names=self.selected_module_names,
@@ -377,12 +380,22 @@ class BayzFlow:
         )
         return self.bayes_model
 
+    # ----------------------------
+    # SVI (CRITICAL FIX HERE)
+    # ----------------------------
     def setup_svi(
         self,
-        loss_fn: Callable[[nn.Module, Any], torch.Tensor],
+        loss_from_logits_fn: Callable[[torch.Tensor, Any], torch.Tensor],
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         lr: float = 1e-3,
     ):
+        """
+        Set up SVI so that the model is executed EXACTLY ONCE per trace.
+
+        Args:
+            loss_from_logits_fn: (logits, batch) -> scalar NLL (or any differentiable loss)
+            predict_fn:          (model, batch) -> logits
+        """
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built.")
 
@@ -390,14 +403,17 @@ class BayzFlow:
         model = self.bayes_model
 
         def pyro_model(batch):
-            # This provides a top-level prefix, but namespacing really comes from PyroModule tree
+            # Register model params but do NOT update them (PyroSample handles randomness)
             pyro.module("bayes_model", model, update_module_params=False)
 
+            # ✅ ONE forward pass
             logits = predict_fn(model, batch)
             pyro.deterministic("logits", logits)
 
-            nll = loss_fn(model, batch)
+            # ✅ loss computed from logits (NO second forward)
+            nll = loss_from_logits_fn(logits, batch)
             pyro.factor("nll", -nll)
+
             return logits
 
         self._pyro_model = pyro_model
@@ -468,7 +484,7 @@ class BayzFlow:
         calib_loader: torch.utils.data.DataLoader,
         train_loader: torch.utils.data.DataLoader,
         calib_forward_fn: Callable[[nn.Module, Any], torch.Tensor],
-        loss_fn: Callable[[nn.Module, Any], torch.Tensor],
+        loss_from_logits_fn: Callable[[torch.Tensor, Any], torch.Tensor],
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         bayes_patterns: Sequence[str],
         num_calib_passes: int = 3,
@@ -497,7 +513,7 @@ class BayzFlow:
 
         if verbose:
             print("\n[BayzFlow] Starting SVI training...")
-        engine.setup_svi(loss_fn=loss_fn, predict_fn=predict_fn, lr=lr)
+        engine.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=lr)
         engine.fit(train_loader=train_loader, num_epochs=train_epochs, device=device)
         return engine
 
@@ -537,8 +553,8 @@ if __name__ == "__main__":
     def predict_fn(m, batch):
         return m(batch["x"])
 
-    def loss_fn(m, batch):
-        logits = m(batch["x"])
+    # ✅ loss computed from logits, NOT by calling m(...) again
+    def loss_from_logits_fn(logits, batch):
         return F.cross_entropy(logits, batch["y"])
 
     ds = TinyDS()
@@ -552,7 +568,7 @@ if __name__ == "__main__":
         calib_loader=calib_loader,
         train_loader=train_loader,
         calib_forward_fn=calib_forward_fn,
-        loss_fn=loss_fn,
+        loss_from_logits_fn=loss_from_logits_fn,
         predict_fn=predict_fn,
         bayes_patterns=["head"],
         num_calib_passes=2,
