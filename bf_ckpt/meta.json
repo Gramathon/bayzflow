@@ -1,0 +1,12 @@
+{
+  "selected_module_names": [
+    "encoder.0",
+    "encoder.2",
+    "head"
+  ],
+  "prior_scales": {
+    "encoder.0": 1.0261962056159972,
+    "encoder.2": 0.5791724979877472,
+    "head": 1.3396700859069826
+  }
+}
