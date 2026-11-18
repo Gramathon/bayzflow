@@ -1,14 +1,14 @@
 # Releasing Bayzflow
 
-This document describes the required release procedure; it does not authorize publication. Do not create a tag or publish a release until maintainers authorize it and every gate in `docs/engineering/RELEASE_READINESS.md` is green.
+1. Confirm that the version in the release tag, `bayzflow/_version.py`, wheel metadata, and changelog agree.
+2. Review the test matrix, clean CPU installs, scientific benchmark, MCP checks, security scans, and candidate artifact manifests from a successful push run on `main`.
+3. After release authorization, push a lightweight version tag to the exact GitHub verified commit that passed CI. Ensure the repository has immutable releases enabled.
 
-1. Start from a clean reviewed commit on the release branch. Confirm `bayzflow/_version.py`, wheel metadata and changelog use one version.
-2. Run the full supported Python test matrix, lint/type/security jobs, scientific benchmark, MCP protocol tests and installed-skill checks.
-3. Build the exact wheel and sdist once with `uv build` (or the CI build frontend). Install the wheel in a fresh environment outside the checkout and run the documented CLI, MCP and skill checks.
-4. Generate SHA256 sums for those exact files. Retain environment, commit, lockfile, workflow run and artifact records alongside them.
-5. Review release notes, security status, SBOM/provenance and limitations. Only then create an authorized signed version tag and publish the already validated artifacts without rebuilding them.
-6. Verify the published artifact hashes and installation from the release URL.
+```bash
+git tag v0.2.0 <verified-main-commit>
+git push origin refs/tags/v0.2.0
+```
 
-On a green main push, CI uploads `bayzflow-candidate` and attests the wheel, sdist and runtime SBOM. After review and release authorization, use the **Publish validated release** workflow on main with the signed tag and successful main push CI run ID. Configure the GitHub `release` environment with the repository's release reviewers before dispatch. The workflow verifies that the tag is signed, the commit matches the run, and the downloaded files match the checksum manifest and attestations. It publishes those files directly.
+The tag push starts **Publish validated release**. It checks the GitHub verified source commit, verifies the attestations and SHA256 checksums of the candidate from that commit's main CI run, and compares the uploaded draft assets byte for byte before publication. It uses the existing CI artifacts. If the tag was pushed before CI finished, rerun the release workflow after CI passes.
 
-After publication, download the files into an empty directory, run `sha256sum -c SHA256SUMS`, verify their GitHub attestations, and install the wheel in a fresh environment. Record the release URL and results on Issue #1.
+After publication, download the assets, run `sha256sum -c SHA256SUMS`, verify the release with `gh release verify v0.2.0`, and install the published wheel in a fresh environment. Record the results with Issue #1.

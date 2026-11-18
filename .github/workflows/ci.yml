@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 permissions:
@@ -104,7 +105,4 @@ jobs:
           test "$(cat SOURCE_COMMIT)" = "$GITHUB_SHA"
       - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
-          subject-path: |
-            candidate/*.whl
-            candidate/*.tar.gz
-            candidate/runtime-sbom.json
+          subject-path: candidate/*
