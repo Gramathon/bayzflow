@@ -1,6 +1,6 @@
+import json
 import sys
 import types
-import json
 
 import torch
 import yaml

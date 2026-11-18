@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any
 
 import pyro
 import torch
 
 from bayzflow import __version__
+from bayzflow.core.engine import find_candidate_modules
 from bayzflow.guides import GuideSpec
 from bayzflow.guides.registry import GuideRegistry, default_registry
-from bayzflow.core.engine import find_candidate_modules
 
 
 @dataclass
@@ -19,7 +19,7 @@ class BayzflowService:
     """Process-local registry for explicitly trusted objects and guides."""
 
     guide_registry: GuideRegistry = default_registry
-    models: Dict[str, Any] = field(default_factory=dict)
+    models: dict[str, Any] = field(default_factory=dict)
 
     def register_model(self, name: str, model: torch.nn.Module) -> None:
         if not name or name in self.models:

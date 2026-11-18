@@ -1,14 +1,16 @@
 # bayzflow/core/experiment.py
 
 import importlib
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import torch
+
 # import torch.nn.functional as F  # Not needed currently
 import yaml
 
-from .engine import BayzFlow
 from bayzflow.guides import GuideSpec
+
+from .engine import BayzFlow
 
 
 def _resolve_class(relative_path: str):
@@ -21,7 +23,7 @@ def _resolve_class(relative_path: str):
     return getattr(module, cls_name)
 
 
-def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def exp(config_path: str, exp: str | None = None) -> tuple[BayzFlow, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """
     High-level, multi-experiment loader.
 
@@ -62,14 +64,13 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
     train_cfg = exp_cfg["training"]
 
     # For MONAI models, pass spatial_size from data config if available
-    if kind == "monai_segmentation":
-        if "spatial_size" in data_cfg:
-            # For BasicUNet, use spatial_size parameter
-            if model_cfg.get("type") == "monai_unet_3d":
-                model_kwargs["spatial_size"] = data_cfg["spatial_size"]
-            # For SwinUNETR, use img_size parameter (if not already specified)
-            elif model_cfg.get("type") == "swin_unetr" and "img_size" not in model_kwargs:
-                model_kwargs["img_size"] = data_cfg["spatial_size"]
+    if kind == "monai_segmentation" and "spatial_size" in data_cfg:
+        # For BasicUNet, use spatial_size parameter
+        if model_cfg.get("type") == "monai_unet_3d":
+            model_kwargs["spatial_size"] = data_cfg["spatial_size"]
+        # For SwinUNETR, use img_size parameter (if not already specified)
+        elif model_cfg.get("type") == "swin_unetr" and "img_size" not in model_kwargs:
+            model_kwargs["img_size"] = data_cfg["spatial_size"]
 
     model = model_cls(**model_kwargs)
 

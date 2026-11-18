@@ -6,21 +6,21 @@ can select and configure them, but cannot name an import path or carry code.
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
-import inspect
 import hashlib
-from typing import get_type_hints
-from typing import Any, Callable, Dict, Mapping, Optional
+import inspect
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, is_dataclass
+from typing import Any, get_type_hints
 
-import pyro.infer.autoguide as autoguide
 import pyro
+from pyro.infer import autoguide
 
 from .specifications import GuideSpec
 
 
 class GuideRegistry:
     def __init__(self) -> None:
-        self._entries: Dict[str, Dict[str, Any]] = {}
+        self._entries: dict[str, dict[str, Any]] = {}
 
     def register(
         self,
@@ -28,9 +28,9 @@ class GuideRegistry:
         factory: Callable[..., Any],
         config_schema: Any = None,
         version: str = "1",
-        capabilities: Optional[Mapping[str, Any]] = None,
-        validator: Optional[Callable[[Mapping[str, Any]], None]] = None,
-        compatibility: Optional[Callable[[Any], bool]] = None,
+        capabilities: Mapping[str, Any] | None = None,
+        validator: Callable[[Mapping[str, Any]], None] | None = None,
+        compatibility: Callable[[Any], bool] | None = None,
     ) -> None:
         if not name or ":" in name or name in self._entries:
             raise ValueError(f"invalid or duplicate guide name: {name!r}")
@@ -46,7 +46,7 @@ class GuideRegistry:
             "identity": _factory_identity(factory),
         }
 
-    def _entry(self, kind: str) -> Dict[str, Any]:
+    def _entry(self, kind: str) -> dict[str, Any]:
         if kind in _BUILTINS:
             cls = getattr(autoguide, _BUILTINS[kind])
             return {"factory": cls, "schema": None, "version": pyro.__version__, "capabilities": {}}
@@ -57,7 +57,7 @@ class GuideRegistry:
         raise ValueError(f"unknown guide kind: {kind!r}")
 
     @staticmethod
-    def _schema_values(schema: Any, kwargs: Mapping[str, Any]) -> Dict[str, Any]:
+    def _schema_values(schema: Any, kwargs: Mapping[str, Any]) -> dict[str, Any]:
         if schema is None:
             return dict(kwargs)
         if hasattr(schema, "model_validate"):
@@ -89,7 +89,7 @@ class GuideRegistry:
             return dict(kwargs) if result is None else dict(result)
         raise TypeError("config_schema must be a Pydantic model, dataclass, or validator")
 
-    def validate(self, spec: GuideSpec | str, kwargs: Optional[Mapping[str, Any]] = None) -> GuideSpec:
+    def validate(self, spec: GuideSpec | str, kwargs: Mapping[str, Any] | None = None) -> GuideSpec:
         if isinstance(spec, str):
             spec = GuideSpec(spec, kwargs or {})
         elif kwargs is not None:
@@ -123,7 +123,7 @@ class GuideRegistry:
             return GuideSpec(spec.kind, values, expected["identity"], expected["version"])
         return GuideSpec(spec.kind, values, f"pyro.infer.autoguide.{_BUILTINS[spec.kind]}", entry["version"])
 
-    def create(self, model: Callable[..., Any], spec: GuideSpec | str, kwargs: Optional[Mapping[str, Any]] = None) -> Any:
+    def create(self, model: Callable[..., Any], spec: GuideSpec | str, kwargs: Mapping[str, Any] | None = None) -> Any:
         valid = self.validate(spec, kwargs)
         entry = self._entry(valid.kind)
         compatibility = entry.get("compatibility")
@@ -134,11 +134,11 @@ class GuideRegistry:
             raise TypeError(f"guide factory for {valid.kind!r} did not return a callable Pyro guide")
         return guide
 
-    def list(self) -> list[Dict[str, Any]]:
-        rows: list[Dict[str, Any]] = []
+    def list(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
         for kind, class_name in _BUILTINS.items():
             cls = getattr(autoguide, class_name)
-            row: Dict[str, Any] = {
+            row: dict[str, Any] = {
                 "kind": kind,
                 "implementation": f"pyro.infer.autoguide.{class_name}",
                 "version": pyro.__version__,

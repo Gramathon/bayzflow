@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 bayzflow.py (rewritten minimal extension)
 
@@ -15,30 +14,31 @@ Design goals:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, Union
-
-import os
-import json
 import copy
 import hashlib
+import json
+import os
 import threading
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import wraps
+from typing import (
+    Any,
+)
+
 import numpy as np
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.distributions import constraints as torch_constraints
-
 import pyro
 import pyro.distributions as dist
+import torch
+import torch.nn.functional as F
+from pyro.infer import SVI, Predictive, Trace_ELBO
 from pyro.nn import PyroModule, PyroSample
-from pyro.infer import SVI, Trace_ELBO, Predictive
-from bayzflow.guides import GuideSpec, default_registry
-from bayzflow._version import __version__ as _VERSION
+from torch import nn
+from torch.distributions import constraints as torch_constraints
 
+from bayzflow._version import __version__ as _VERSION
+from bayzflow.guides import GuideSpec, default_registry
 
 _PYRO_STORE_LOCK = threading.RLock()
 
@@ -141,7 +141,7 @@ class ModuleInfo:
     module: nn.Module
 
 
-_DEFAULT_INCLUDE_TYPES: Tuple[Type[nn.Module], ...] = (
+_DEFAULT_INCLUDE_TYPES: tuple[type[nn.Module], ...] = (
     nn.Linear,
     nn.Conv1d,
     nn.Conv2d,
@@ -152,11 +152,11 @@ _DEFAULT_INCLUDE_TYPES: Tuple[Type[nn.Module], ...] = (
 
 def find_candidate_modules(
     model: nn.Module,
-    include_types: Sequence[Type[nn.Module]] = _DEFAULT_INCLUDE_TYPES,
-    exclude_names: Optional[Iterable[str]] = None,
-) -> List[ModuleInfo]:
+    include_types: Sequence[type[nn.Module]] = _DEFAULT_INCLUDE_TYPES,
+    exclude_names: Iterable[str] | None = None,
+) -> list[ModuleInfo]:
     exclude_names = set(exclude_names or [])
-    candidates: List[ModuleInfo] = []
+    candidates: list[ModuleInfo] = []
     for name, module in model.named_modules():
         if name == "":
             continue
@@ -173,7 +173,7 @@ def print_candidates(candidates: Sequence[ModuleInfo]) -> None:
         print(f"[{idx:03}] {info.name:60} {info.module.__class__.__name__}")
 
 
-def select_by_pattern(candidates: Sequence[ModuleInfo], patterns: Sequence[str]) -> List[ModuleInfo]:
+def select_by_pattern(candidates: Sequence[ModuleInfo], patterns: Sequence[str]) -> list[ModuleInfo]:
     patterns = list(patterns)
     return [info for info in candidates if any(p in info.name for p in patterns)]
 
@@ -214,7 +214,7 @@ class BayesLinear(PyroModule):
 class BayesConvNd(PyroModule):
     conv_dim: int = 2
 
-    def __init__(self, base_conv: Union[nn.Conv1d, nn.Conv2d, nn.Conv3d], prior_scale: float = 0.1):
+    def __init__(self, base_conv: nn.Conv1d | nn.Conv2d | nn.Conv3d, prior_scale: float = 0.1):
         super().__init__()
         self.register_buffer("_weight_loc", base_conv.weight.detach().clone())
         self.register_buffer("_weight_scale", torch.full_like(self._weight_loc, prior_scale))
@@ -310,7 +310,7 @@ class BayesConvTranspose3d(PyroModule):
 _BAYES_TYPES = (BayesLinear, BayesConv1d, BayesConv2d, BayesConv3d, BayesConvTranspose3d)
 
 
-def get_parent_and_child(model: nn.Module, full_name: str) -> Tuple[nn.Module, str]:
+def get_parent_and_child(model: nn.Module, full_name: str) -> tuple[nn.Module, str]:
     parts = full_name.split(".")
     parent = model
     for p in parts[:-1]:
@@ -347,7 +347,7 @@ def attach_priors(
     model: nn.Module,
     selected_names: Sequence[str],
     prior_scale: float = 0.1,
-    per_layer_scale: Optional[Dict[str, float]] = None,
+    per_layer_scale: dict[str, float] | None = None,
 ) -> nn.Module:
     per_layer_scale = per_layer_scale or {}
 
@@ -378,8 +378,8 @@ def calibrate_prior_scales(
     forward_fn: Callable[[nn.Module, Any], torch.Tensor],
     num_passes: int = 3,
     percentile: float = 0.9,
-    device: Optional[torch.device] = None,
-) -> Dict[str, float]:
+    device: torch.device | None = None,
+) -> dict[str, float]:
     model.eval()
     if device is not None:
         model.to(device)
@@ -389,7 +389,7 @@ def calibrate_prior_scales(
     if missing:
         raise KeyError(f"Modules not found for calibration: {missing}")
 
-    stats: Dict[str, List[float]] = {n: [] for n in module_names}
+    stats: dict[str, list[float]] = {n: [] for n in module_names}
     hooks = []
 
     def make_hook(name: str):
@@ -418,7 +418,7 @@ def calibrate_prior_scales(
     for h in hooks:
         h.remove()
 
-    out: Dict[str, float] = {}
+    out: dict[str, float] = {}
     for name, vals in stats.items():
         if not vals:
             print(f"[BayzFlow] Warning: no stats for '{name}', using 0.1")
@@ -436,7 +436,7 @@ def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def _to_device_batch(batch: Any, device: Optional[torch.device]) -> Any:
+def _to_device_batch(batch: Any, device: torch.device | None) -> Any:
     if device is None:
         return batch
     if isinstance(batch, dict):
@@ -537,7 +537,7 @@ class _LayerPerExampleMCRecorder:
             h.remove()
         self.handles = []
 
-    def results(self) -> Dict[str, Dict[str, np.ndarray]]:
+    def results(self) -> dict[str, dict[str, np.ndarray]]:
         """
         Returns per-layer per-example arrays:
           layer -> {"mc_mean": [B], "mc_std": [B]}
@@ -580,11 +580,11 @@ class _LayerScalarRecorder:
         if missing:
             raise KeyError(f"[BayzFlow] measure_layers: modules not found: {missing}")
 
-        self.handles: List[Any] = []
+        self.handles: list[Any] = []
         self._sample_idx = -1
 
         # layer -> list[dict] (one per MC sample)
-        self.samples: Dict[str, List[Dict[str, float]]] = {n: [] for n in self.layer_names}
+        self.samples: dict[str, list[dict[str, float]]] = {n: [] for n in self.layer_names}
 
     def _hook(self, name: str):
         def fn(module, inputs, output):
@@ -620,7 +620,7 @@ class _LayerScalarRecorder:
         self.handles = []
 
     @staticmethod
-    def _aggregate_one(metric_vals: List[float]) -> Dict[str, float]:
+    def _aggregate_one(metric_vals: list[float]) -> dict[str, float]:
         arr = np.asarray(metric_vals, dtype=np.float64)
         return {
             "mc_mean": float(arr.mean()) if arr.size else float("nan"),
@@ -629,12 +629,12 @@ class _LayerScalarRecorder:
             "mc_p90": float(np.percentile(arr, 90)) if arr.size else float("nan"),
         }
 
-    def aggregate(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+    def aggregate(self) -> dict[str, dict[str, dict[str, float]]]:
         """
         Returns:
           layer -> metric_name -> stats_dict
         """
-        out: Dict[str, Dict[str, Dict[str, float]]] = {}
+        out: dict[str, dict[str, dict[str, float]]] = {}
         for layer, rows in self.samples.items():
             if not rows:
                 out[layer] = {}
@@ -654,34 +654,34 @@ class BayzFlow:
     def __init__(
         self,
         model: nn.Module,
-        guide: Union[str, GuideSpec] = "auto_lowrank",
-        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide: str | GuideSpec = "auto_lowrank",
+        guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
     ):
         self.base_model = model
-        self.bayes_model: Optional[nn.Module] = None
-        self.selected_module_names: List[str] = []
-        self.prior_scales: Dict[str, float] = {}
+        self.bayes_model: nn.Module | None = None
+        self.selected_module_names: list[str] = []
+        self.prior_scales: dict[str, float] = {}
 
-        self.guide: Optional[nn.Module] = None
+        self.guide: nn.Module | None = None
         self.guide_registry = guide_registry
         if isinstance(guide, GuideSpec) and guide_kwargs is not None:
             raise ValueError("pass guide kwargs inside GuideSpec or separately, not both")
         requested_guide = guide if isinstance(guide, GuideSpec) else GuideSpec(guide, guide_kwargs or {})
         self.guide_spec = self.guide_registry.validate(requested_guide)
         self._param_store_state = None
-        self.training_history: List[float] = []
-        self.checkpoint_identity: Optional[str] = None
+        self.training_history: list[float] = []
+        self.checkpoint_identity: str | None = None
         self.optimizer = None
-        self.svi: Optional[SVI] = None
+        self.svi: SVI | None = None
         self._pyro_model = None
 
-    def list_candidates(self, exclude_names: Optional[Iterable[str]] = None) -> List[ModuleInfo]:
+    def list_candidates(self, exclude_names: Iterable[str] | None = None) -> list[ModuleInfo]:
         cands = find_candidate_modules(self.base_model, exclude_names=exclude_names)
         print_candidates(cands)
         return cands
 
-    def select_modules(self, candidates: Sequence[ModuleInfo], patterns: Sequence[str]) -> List[str]:
+    def select_modules(self, candidates: Sequence[ModuleInfo], patterns: Sequence[str]) -> list[str]:
         selected = select_by_pattern(candidates, patterns)
         self.selected_module_names = [m.name for m in selected]
         print("[BayzFlow] Selected modules:")
@@ -695,8 +695,8 @@ class BayzFlow:
         calib_forward_fn: Callable[[nn.Module, Any], torch.Tensor],
         num_passes: int = 3,
         percentile: float = 0.9,
-        device: Optional[torch.device] = None,
-    ) -> Dict[str, float]:
+        device: torch.device | None = None,
+    ) -> dict[str, float]:
         if not self.selected_module_names:
             raise RuntimeError("No modules selected.")
         self.prior_scales = calibrate_prior_scales(
@@ -728,14 +728,14 @@ class BayzFlow:
     @_isolated_param_store
     def setup_svi(
         self,
-        loss_from_logits_fn: Optional[Callable[[torch.Tensor, Any], torch.Tensor]] = None,
-        predict_fn: Optional[Callable[[nn.Module, Any], torch.Tensor]] = None,
+        loss_from_logits_fn: Callable[[torch.Tensor, Any], torch.Tensor] | None = None,
+        predict_fn: Callable[[nn.Module, Any], torch.Tensor] | None = None,
         lr: float = 1e-3,
-        guide_kind: Optional[str] = None,
-        rank: Optional[int] = None,
-        guide: Optional[Union[str, GuideSpec]] = None,
-        guide_kwargs: Optional[Dict[str, Any]] = None,
-        loss_fn: Optional[Callable[[torch.Tensor, Any], torch.Tensor]] = None,
+        guide_kind: str | None = None,
+        rank: int | None = None,
+        guide: str | GuideSpec | None = None,
+        guide_kwargs: dict[str, Any] | None = None,
+        loss_fn: Callable[[torch.Tensor, Any], torch.Tensor] | None = None,
     ):
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built.")
@@ -787,8 +787,8 @@ class BayzFlow:
         self,
         train_loader: torch.utils.data.DataLoader,
         num_epochs: int = 5,
-        device: Optional[torch.device] = None,
-    ) -> List[float]:
+        device: torch.device | None = None,
+    ) -> list[float]:
         if self.svi is None:
             raise RuntimeError("SVI not set up. Call setup_svi(...) first.")
         if self.bayes_model is None:
@@ -817,10 +817,10 @@ class BayzFlow:
         batch: Any,
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         num_samples: int = 16,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         return_samples: bool = False,
         max_samples: int = 1000,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         if self._pyro_model is None or self.guide is None or self.bayes_model is None:
             raise RuntimeError("Model/guide not initialised.")
         _validate_sample_count(num_samples, max_samples)
@@ -856,11 +856,11 @@ class BayzFlow:
         self,
         batch: Any,
         num_samples: int = 100,
-        site_names: Optional[Sequence[str]] = None,
-        device: Optional[torch.device] = None,
+        site_names: Sequence[str] | None = None,
+        device: torch.device | None = None,
         max_samples: int = 1000,
         max_output_bytes: int = 64 * 1024 * 1024,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Draw bounded posterior samples for latent and selected model sites."""
         if self._pyro_model is None or self.guide is None or self.bayes_model is None:
             raise RuntimeError("Model/guide not initialised. Train or load posterior first.")
@@ -886,12 +886,12 @@ class BayzFlow:
 
     def posterior_summary(
         self,
-        samples: Dict[str, torch.Tensor],
+        samples: dict[str, torch.Tensor],
         max_covariance_dimension: int = 256,
         max_summary_bytes: int = 64 * 1024 * 1024,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Summarize posterior sites, retaining dense empirical covariance only when bounded."""
-        summary: Dict[str, Dict[str, Any]] = {}
+        summary: dict[str, dict[str, Any]] = {}
         summary_bytes = 0
         for name, values in samples.items():
             if not torch.is_tensor(values) or values.ndim < 1:
@@ -903,7 +903,7 @@ class BayzFlow:
             summary_bytes += output_bytes
             if summary_bytes > max_summary_bytes:
                 raise ValueError(f"posterior summary exceeds the {max_summary_bytes}-byte limit")
-            row: Dict[str, Any] = {
+            row: dict[str, Any] = {
                 "mean": values.mean(0),
                 "variance": values.var(0, unbiased=False),
                 "sample_count": int(values.shape[0]),
@@ -924,9 +924,9 @@ class BayzFlow:
         self,
         samples: Mapping[str, torch.Tensor],
         path: str,
-        random_seed: Optional[int] = None,
+        random_seed: int | None = None,
         max_artifact_bytes: int = 128 * 1024 * 1024,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Write bounded tensor-only posterior samples and a checksum manifest."""
         if not samples or any(not isinstance(name, str) or not torch.is_tensor(value)
                               for name, value in samples.items()):
@@ -945,7 +945,7 @@ class BayzFlow:
         site_shapes = {name: list(value.shape) for name, value in tensors.items()}
         sample_counts = {name: int(value.shape[0]) if value.ndim else None
                          for name, value in tensors.items()}
-        manifest: Dict[str, Any] = {
+        manifest: dict[str, Any] = {
             "artifact_id": checksum,
             "tensor_file": os.path.basename(tensor_path),
             "artifact_sha256": checksum,
@@ -971,7 +971,7 @@ class BayzFlow:
     def load_posterior_sample_artifact(
         manifest_path: str,
         max_artifact_bytes: int = 128 * 1024 * 1024,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Verify and safely load a tensor-only posterior sample artifact."""
         with open(manifest_path, encoding="utf-8") as stream:
             manifest = json.load(stream)
@@ -1010,12 +1010,12 @@ class BayzFlow:
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         num_epochs: int = 5,
         lr: float = 1e-3,
-        device: Optional[torch.device] = None,
-        save_dir: Optional[str] = None,
-        guide: Optional[Union[str, GuideSpec]] = None,
-        guide_kwargs: Optional[Dict[str, Any]] = None,
-        seed: Optional[int] = None,
-        experiment_metadata: Optional[Mapping[str, Any]] = None,
+        device: torch.device | None = None,
+        save_dir: str | None = None,
+        guide: str | GuideSpec | None = None,
+        guide_kwargs: dict[str, Any] | None = None,
+        seed: int | None = None,
+        experiment_metadata: Mapping[str, Any] | None = None,
     ) -> None:
         """
         Train SVI ONCE. Optionally save:
@@ -1100,9 +1100,9 @@ class BayzFlow:
         load_dir: str,
         loss_from_logits_fn: Callable[[torch.Tensor, Any], torch.Tensor],
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         strict_model_state: bool = True,
-        guide: Optional[Union[str, GuideSpec]] = None,
+        guide: str | GuideSpec | None = None,
     ) -> None:
         """
         Load:
@@ -1277,7 +1277,7 @@ class BayzFlow:
         B = y_s.shape[1]
         vote_rate = torch.empty(B)
         for b in range(B):
-            vals, counts = y_s[:, b].unique(return_counts=True)
+            _vals, counts = y_s[:, b].unique(return_counts=True)
             vote_rate[b] = counts.max().float() / float(num_samples)
         variation_ratio = 1.0 - vote_rate         # [B]
 
@@ -1339,10 +1339,10 @@ class BayzFlow:
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         layer_names: Sequence[str],
         num_samples: int = 32,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         include_logits: bool = True,
         max_samples: int = 1000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Runs MC Predictive under the current posterior and records per-layer scalar summaries.
 
@@ -1378,7 +1378,7 @@ class BayzFlow:
         finally:
             rec.remove()
 
-        out: Dict[str, Any] = {"layer_stats": rec.aggregate()}
+        out: dict[str, Any] = {"layer_stats": rec.aggregate()}
 
         if include_logits:
             logits_s = samp["logits"]  # [S, ...]
@@ -1397,12 +1397,12 @@ class BayzFlow:
         num_calib_passes: int = 3,
         calib_percentile: float = 0.9,
         default_prior_scale: float = 0.1,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         verbose: bool = True,
-        guide: Union[str, GuideSpec] = "auto_lowrank",
-        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide: str | GuideSpec = "auto_lowrank",
+        guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
-    ) -> "BayzFlow":
+    ) -> BayzFlow:
         """Select layers, calibrate priors and build the Bayesian model without training."""
         engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
         if verbose:
@@ -1434,12 +1434,12 @@ class BayzFlow:
         default_prior_scale: float = 0.1,
         train_epochs: int = 5,
         lr: float = 1e-3,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         verbose: bool = True,
-        guide: Union[str, GuideSpec] = "auto_lowrank",
-        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide: str | GuideSpec = "auto_lowrank",
+        guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
-    ) -> "BayzFlow":
+    ) -> BayzFlow:
         engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
 
         if verbose:
@@ -1802,7 +1802,6 @@ if __name__ == "__main__":
     print("  head_std mean:", float(layer_std_head.mean()))
 
     import numpy as np
-
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_auc_score
 
@@ -1875,7 +1874,7 @@ if __name__ == "__main__":
         auc_aug  = roc_auc_score(yerr, p_aug)  if len(np.unique(yerr)) > 1 else float("nan")
 
         return {
-            "N": int(len(yerr)),
+            "N": len(yerr),
             "auc_base": float(auc_base),
             "auc_aug": float(auc_aug),
             "delta_auc": float(auc_aug - auc_base) if (not np.isnan(auc_base) and not np.isnan(auc_aug)) else float("nan"),

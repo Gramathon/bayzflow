@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
 import json
-from typing import Any, Dict, Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -27,8 +28,8 @@ class GuideSpec:
         except (TypeError, ValueError) as exc:
             raise ValueError("guide kwargs must contain only finite JSON-compatible values") from exc
 
-    def to_dict(self) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"kind": self.kind, "kwargs": dict(self.kwargs)}
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"kind": self.kind, "kwargs": dict(self.kwargs)}
         if self.implementation_id is not None:
             result["implementation_id"] = self.implementation_id
         if self.implementation_version is not None:
@@ -36,7 +37,7 @@ class GuideSpec:
         return result
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "GuideSpec":
+    def from_dict(cls, value: Mapping[str, Any]) -> GuideSpec:
         allowed = {"kind", "kwargs", "implementation_id", "implementation_version"}
         extra = set(value) - allowed
         if extra:

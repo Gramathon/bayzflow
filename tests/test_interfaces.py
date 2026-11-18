@@ -36,6 +36,7 @@ def test_service_exposes_only_registered_models_and_validates_guides():
 def test_mcp_protocol_in_memory():
     pytest.importorskip("mcp")
     from mcp import Client
+
     from bayzflow.mcp.server import create_server
 
     async def run():
