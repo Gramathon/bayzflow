@@ -1,0 +1,7 @@
+# EXPCON integration boundary
+
+EXPCON remains responsible for experiment identity, contract validation/freeze, execution admission, run lifecycle, evidence collection, verification and scientific adjudication. Bayzflow is the inference workload and does not depend on EXPCON in its core runtime.
+
+The candidate's posterior metadata contains selected module names, calibrated prior scales, guide specification/identity, model class, software versions, training seed, per-epoch ELBO metrics, checksums and optional JSON experiment configuration. `save_posterior_samples` writes tensor-only samples with a sidecar describing site names/shapes/dtypes, seed, model/guide/checkpoint identity and SHA256. A controlled EXPCON stage should additionally bind Bayzflow source and dependency-lock identities, model/data inputs, training arguments, metric definitions and hashes of every tensor artifact. EXPCON then collects and verifies those declared outputs independently.
+
+This repository includes no executed EXPCON contract or workload. The live EXPCON README inspected for this work documents `init`, `validate`, `freeze`, `bundle`, `verify-bundle`, `run`, `fetch`, `verify`, `artifacts`, and `adjudicate`; it also states that local arbitrary Python workloads are not sandboxed. No Bayzflow-specific current EXPCON schema integration was validated. A frozen experiment example and verified handoff remain release blockers.

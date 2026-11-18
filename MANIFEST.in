@@ -11,3 +11,6 @@ exclude .git
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * .DS_Store
+prune bayzflow/research
+prune bayzflow/observability
+prune bayzflow/archive

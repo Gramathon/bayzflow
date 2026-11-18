@@ -1,6 +1,6 @@
 # bayzflow/__init__.py
 
-__version__ = "0.1.0"
+from bayzflow._version import __version__
 
 from bayzflow.core.engine import BayzFlow          # import the engine module
 from bayzflow.core.experiment import exp as _exp    # import the exp() helper from experiment.py

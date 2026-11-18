@@ -8,6 +8,7 @@ import torch
 import yaml
 
 from .engine import BayzFlow
+from bayzflow.guides import GuideSpec
 
 
 def _resolve_class(relative_path: str):
@@ -159,12 +160,17 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
             # The model already handles the probabilistic loss via pyro.sample
             # We return a dummy loss since the actual loss is handled by Pyro
             return torch.tensor(0.0, requires_grad=True)
+
+        def predict_fn(model, batch):
+            x, y = batch if isinstance(batch, (list, tuple)) else (batch[0], batch[1])
+            return model(x, y)
+
+        def loss_from_logits_fn(logits, batch):
+            # BayesianLSTM contributes its StudentT observation site itself.
+            return logits.new_zeros(())
     
     elif kind == "monai_segmentation":
         # Get device configuration early for use in functions
-        device_str_monai = exp_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-        device_monai = torch.device(device_str_monai)
-
         def calib_forward_fn(model, batch):
             """Forward function for MONAI segmentation calibration."""
             if isinstance(batch, dict):
@@ -198,6 +204,19 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
                 loss = F.binary_cross_entropy_with_logits(logits, y.float())
             
             return loss
+
+        def predict_fn(model, batch):
+            x = batch["image"] if isinstance(batch, dict) else batch[0]
+            return model(x)
+
+        def loss_from_logits_fn(logits, batch):
+            import torch.nn.functional as F
+            y = batch["label"] if isinstance(batch, dict) else batch[1]
+            if y.dtype == torch.long:
+                if y.ndim == logits.ndim and y.shape[1] == 1:
+                    y = y.squeeze(1)
+                return F.cross_entropy(logits, y)
+            return F.binary_cross_entropy_with_logits(logits, y.float())
     
     else:
         raise NotImplementedError(f"Functions for kind='{kind}' not implemented yet")
@@ -211,7 +230,8 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
     default_prior_scale = train_cfg.get("default_prior_scale", 0.1)
     train_epochs        = train_cfg.get("epochs", 10)
     lr                  = float(train_cfg.get("lr", 1e-3))
-    patience            = train_cfg.get("patience", 10)
+    guide_cfg = exp_cfg.get("guide", {})
+    guide_spec = GuideSpec(guide_cfg.get("kind", "auto_lowrank"), guide_cfg.get("kwargs", {}))
 
     device_str = exp_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device(device_str)
@@ -219,34 +239,62 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
     # Get checkpoint configuration
     checkpoint_cfg = exp_cfg.get("checkpoints", {})
     checkpoint_dir = checkpoint_cfg.get("outdir", "checkpoints")
-    checkpoint_name = checkpoint_cfg.get("best_name", "best_model.pt")
-    checkpoint_path = f"{checkpoint_dir}/{checkpoint_name}" if checkpoint_cfg else None
+    checkpoint_path = checkpoint_dir if checkpoint_cfg else None
 
     # 5) run BayzFlow workflow with checkpointing --------------
     # Use from_model_and_data for setup, then fit with checkpoint support
-    bf = BayzFlow.from_model_and_data(
-        model=model,
-        calib_loader=calib_loader,
-        calib_forward_fn=calib_forward_fn,
-        bayes_patterns=bayes_patterns,
-        num_calib_passes=num_calib_passes,
-        calib_percentile=calib_percentile,
-        default_prior_scale=default_prior_scale,
-        device=device,
-        verbose=True,
-    )
+    if kind == "fx":
+        # BayesianLSTM is already a PyroModule with explicit PyroSample priors
+        # and an observed StudentT site. Wrapping its heads a second time would
+        # replace latent samples with a second, incompatible parameterization.
+        bf = BayzFlow(model=model, guide=guide_spec)
+        bf.bayes_model = model
+        if device is not None:
+            model.to(device)
+    else:
+        bf = BayzFlow.from_model_and_data(
+            model=model,
+            calib_loader=calib_loader,
+            calib_forward_fn=calib_forward_fn,
+            bayes_patterns=bayes_patterns,
+            num_calib_passes=num_calib_passes,
+            calib_percentile=calib_percentile,
+            default_prior_scale=default_prior_scale,
+            device=device,
+            verbose=True,
+            guide=guide_spec,
+        )
 
-    # Setup SVI and train with checkpoint support
+    # Set up and train once using the engine's public signatures.
     print("\n[BayzFlow] Starting SVI training...")
-    bf.setup_svi(loss_fn=loss_fn, lr=lr)
-    bf.fit(
+    bf.train_posterior(
         train_loader=train_loader,
-        loss_fn=loss_fn,
+        loss_from_logits_fn=loss_from_logits_fn,
+        predict_fn=predict_fn,
         num_epochs=train_epochs,
+        lr=lr,
         device=device,
-        val_loader=val_loader,
-        patience=patience,
-        checkpoint_path=checkpoint_path,
+        save_dir=checkpoint_path,
+        guide=guide_spec,
+        seed=train_cfg.get("seed"),
+        experiment_metadata={
+            "kind": kind,
+            "model": model_cfg,
+            "data": data_cfg,
+            "guide": guide_spec.to_dict(),
+            "selected_layers": list(bf.selected_module_names),
+            "prior_configuration": {
+                "default_scale": default_prior_scale,
+                "calibration_passes": num_calib_passes,
+                "calibration_percentile": calib_percentile,
+                "calibrated_scales": dict(bf.prior_scales),
+            },
+            "training": {
+                "epochs": train_epochs,
+                "learning_rate": lr,
+                "seed": train_cfg.get("seed"),
+            },
+        },
     )
 
     # Prepare loaders dict for return
@@ -269,8 +317,11 @@ def exp(config_path: str, exp: str | None = None) -> Tuple[BayzFlow, Dict[str, A
         "posterior_cfg": {
             "save_latents": save_latents,
             "save_path": save_path,
-            "num_samples": posterior_cfg.get("num_samples", 16)
-        }
+            "num_samples": posterior_cfg.get("num_samples", 16),
+            "guide": bf.guide_spec.to_dict(),
+            "guide_identity": bf.guide_spec.identity,
+        },
+        "checkpoint_path": checkpoint_path,
     }
 
     return bf, loaders, cfg, extras

@@ -16,21 +16,119 @@ Design goals:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 import os
 import json
+import copy
+import hashlib
+import threading
+from contextlib import contextmanager
+from functools import wraps
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import constraints as torch_constraints
 
 import pyro
 import pyro.distributions as dist
 from pyro.nn import PyroModule, PyroSample
 from pyro.infer import SVI, Trace_ELBO, Predictive
-from pyro.infer.autoguide import AutoNormal, AutoDiagonalNormal, AutoLowRankMultivariateNormal
+from bayzflow.guides import GuideSpec, default_registry
+from bayzflow._version import __version__ as _VERSION
+
+
+_PYRO_STORE_LOCK = threading.RLock()
+
+
+@contextmanager
+def _engine_param_store(engine):
+    """Give one engine exclusive access to Pyro's process-global parameter store."""
+    with _PYRO_STORE_LOCK:
+        store = pyro.get_param_store()
+        previous = copy.deepcopy(store.get_state())
+        store.clear()
+        if engine._param_store_state is not None:
+            store.set_state(copy.deepcopy(engine._param_store_state))
+        try:
+            yield
+        finally:
+            engine._param_store_state = copy.deepcopy(store.get_state())
+            store.clear()
+            store.set_state(previous)
+
+
+def _isolated_param_store(method):
+    """Give each engine a private snapshot while serializing Pyro's global store."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with _engine_param_store(self):
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
+def _serialize_pyro_constraints(constraints_map):
+    """Serialize only common declarative Pyro constraints, never Python objects."""
+    encoded = {}
+    for name, constraint in constraints_map.items():
+        type_name = type(constraint).__name__
+        if type_name == "_Real":
+            encoded[name] = {"kind": "real"}
+        elif type_name in {"_SoftplusPositive", "_GreaterThan"}:
+            lower_bound = float(constraint.lower_bound)
+            if type_name == "_SoftplusPositive" and lower_bound != 0.0:
+                raise ValueError("safe serialization supports only zero-bound softplus constraints")
+            encoded[name] = {
+                "kind": "softplus_positive" if type_name == "_SoftplusPositive" else "greater_than",
+                "lower_bound": lower_bound,
+            }
+        elif type_name == "_Interval":
+            encoded[name] = {
+                "kind": "interval",
+                "lower_bound": float(constraint.lower_bound),
+                "upper_bound": float(constraint.upper_bound),
+            }
+        else:
+            raise ValueError(f"cannot safely serialize Pyro constraint {type_name!r} for {name!r}")
+    return encoded
+
+
+def _deserialize_pyro_constraints(encoded):
+    from pyro.distributions import constraints as pyro_constraints
+
+    result = {}
+    for name, value in encoded.items():
+        kind = value["kind"]
+        if kind == "real":
+            constraint = torch_constraints.real
+        elif kind == "softplus_positive":
+            if value["lower_bound"] != 0.0:
+                raise ValueError("unsupported softplus constraint lower bound")
+            constraint = pyro_constraints.softplus_positive
+        elif kind == "greater_than":
+            constraint = torch_constraints.greater_than(value["lower_bound"])
+        elif kind == "interval":
+            constraint = torch_constraints.interval(value["lower_bound"], value["upper_bound"])
+        else:
+            raise ValueError(f"unsupported serialized constraint kind: {kind!r}")
+        result[name] = constraint
+    return result
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_sample_count(num_samples: int, max_samples: int) -> None:
+    if (isinstance(num_samples, bool) or not isinstance(num_samples, int)
+            or not 1 <= num_samples <= max_samples):
+        raise ValueError(f"num_samples must be between 1 and {max_samples}")
 
 
 # ============================================================================
@@ -48,17 +146,7 @@ _DEFAULT_INCLUDE_TYPES: Tuple[Type[nn.Module], ...] = (
     nn.Conv1d,
     nn.Conv2d,
     nn.Conv3d,
-    nn.ConvTranspose1d,
-    nn.ConvTranspose2d,
     nn.ConvTranspose3d,
-    nn.LayerNorm,
-    nn.BatchNorm1d,
-    nn.BatchNorm2d,
-    nn.BatchNorm3d,
-    nn.InstanceNorm1d,
-    nn.InstanceNorm2d,
-    nn.InstanceNorm3d,
-    nn.GroupNorm,
 )
 
 
@@ -101,23 +189,26 @@ class BayesLinear(PyroModule):
         self.in_features = base_linear.in_features
         self.out_features = base_linear.out_features
 
-        w_mean = base_linear.weight.detach()
-        b_mean = base_linear.bias.detach() if base_linear.bias is not None else None
-
-        # IMPORTANT: use pyro.sample with explicit unique names
-        self._weight_prior = dist.Normal(w_mean, prior_scale).to_event(2)
-        self._bias_prior = (
-            dist.Normal(b_mean, prior_scale).to_event(1)
-            if b_mean is not None else None
-        )
+        self.register_buffer("_weight_loc", base_linear.weight.detach().clone())
+        self.register_buffer("_weight_scale", torch.full_like(self._weight_loc, prior_scale))
+        if base_linear.bias is None:
+            self.register_buffer("_bias_loc", None)
+            self.register_buffer("_bias_scale", None)
+        else:
+            self.register_buffer("_bias_loc", base_linear.bias.detach().clone())
+            self.register_buffer("_bias_scale", torch.full_like(self._bias_loc, prior_scale))
 
         self._name = name  # unique layer name for namespacing
 
     def forward(self, x):
-        weight = pyro.sample(f"{self._name}.weight", self._weight_prior)
+        weight = pyro.sample(
+            f"{self._name}.weight", dist.Normal(self._weight_loc, self._weight_scale).to_event(2)
+        )
         bias = None
-        if self._bias_prior is not None:
-            bias = pyro.sample(f"{self._name}.bias", self._bias_prior)
+        if self._bias_loc is not None:
+            bias = pyro.sample(
+                f"{self._name}.bias", dist.Normal(self._bias_loc, self._bias_scale).to_event(1)
+            )
         return F.linear(x, weight, bias)
 
 class BayesConvNd(PyroModule):
@@ -125,8 +216,14 @@ class BayesConvNd(PyroModule):
 
     def __init__(self, base_conv: Union[nn.Conv1d, nn.Conv2d, nn.Conv3d], prior_scale: float = 0.1):
         super().__init__()
-        w_mean = base_conv.weight.detach()
-        b_mean = base_conv.bias.detach() if base_conv.bias is not None else None
+        self.register_buffer("_weight_loc", base_conv.weight.detach().clone())
+        self.register_buffer("_weight_scale", torch.full_like(self._weight_loc, prior_scale))
+        if base_conv.bias is None:
+            self.register_buffer("_bias_loc", None)
+            self.register_buffer("_bias_scale", None)
+        else:
+            self.register_buffer("_bias_loc", base_conv.bias.detach().clone())
+            self.register_buffer("_bias_scale", torch.full_like(self._bias_loc, prior_scale))
 
         self.in_channels = base_conv.in_channels
         self.out_channels = base_conv.out_channels
@@ -136,8 +233,13 @@ class BayesConvNd(PyroModule):
         self.dilation = base_conv.dilation
         self.groups = base_conv.groups
 
-        self.weight = PyroSample(dist.Normal(w_mean, prior_scale).to_event(w_mean.dim()))
-        self.bias = PyroSample(dist.Normal(b_mean, prior_scale).to_event(1)) if b_mean is not None else None
+        self.weight = PyroSample(
+            lambda self: dist.Normal(self._weight_loc, self._weight_scale).to_event(self._weight_loc.dim())
+        )
+        self.bias = (
+            PyroSample(lambda self: dist.Normal(self._bias_loc, self._bias_scale).to_event(1))
+            if self._bias_loc is not None else None
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.conv_dim == 1:
@@ -164,8 +266,14 @@ class BayesConv3d(BayesConvNd):
 class BayesConvTranspose3d(PyroModule):
     def __init__(self, base_conv: nn.ConvTranspose3d, prior_scale: float = 0.1):
         super().__init__()
-        w_mean = base_conv.weight.detach()
-        b_mean = base_conv.bias.detach() if base_conv.bias is not None else None
+        self.register_buffer("_weight_loc", base_conv.weight.detach().clone())
+        self.register_buffer("_weight_scale", torch.full_like(self._weight_loc, prior_scale))
+        if base_conv.bias is None:
+            self.register_buffer("_bias_loc", None)
+            self.register_buffer("_bias_scale", None)
+        else:
+            self.register_buffer("_bias_loc", base_conv.bias.detach().clone())
+            self.register_buffer("_bias_scale", torch.full_like(self._bias_loc, prior_scale))
 
         self.in_channels = base_conv.in_channels
         self.out_channels = base_conv.out_channels
@@ -176,8 +284,13 @@ class BayesConvTranspose3d(PyroModule):
         self.groups = base_conv.groups
         self.dilation = base_conv.dilation
 
-        self.weight = PyroSample(dist.Normal(w_mean, prior_scale).to_event(w_mean.dim()))
-        self.bias = PyroSample(dist.Normal(b_mean, prior_scale).to_event(1)) if b_mean is not None else None
+        self.weight = PyroSample(
+            lambda self: dist.Normal(self._weight_loc, self._weight_scale).to_event(self._weight_loc.dim())
+        )
+        self.bias = (
+            PyroSample(lambda self: dist.Normal(self._bias_loc, self._bias_scale).to_event(1))
+            if self._bias_loc is not None else None
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return F.conv_transpose3d(
@@ -246,9 +359,10 @@ def attach_priors(
         wrapped = wrap_module_with_prior(full_name, child, prior_scale=scale)
 
         if wrapped is child:
-            print(f"[BayzFlow] Warning: '{full_name}' not wrapped (unsupported: {type(child)}).")
-        else:
-            setattr(parent, child_name, wrapped)
+            raise TypeError(
+                f"selected module {full_name!r} has unsupported type {type(child).__name__}"
+            )
+        setattr(parent, child_name, wrapped)
 
     return model
 
@@ -537,13 +651,27 @@ class _LayerScalarRecorder:
 # ============================================================================
 
 class BayzFlow:
-    def __init__(self, model: nn.Module):
+    def __init__(
+        self,
+        model: nn.Module,
+        guide: Union[str, GuideSpec] = "auto_lowrank",
+        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide_registry=default_registry,
+    ):
         self.base_model = model
         self.bayes_model: Optional[nn.Module] = None
         self.selected_module_names: List[str] = []
         self.prior_scales: Dict[str, float] = {}
 
-        self.guide: Optional[AutoLowRankMultivariateNormal] = None
+        self.guide: Optional[nn.Module] = None
+        self.guide_registry = guide_registry
+        if isinstance(guide, GuideSpec) and guide_kwargs is not None:
+            raise ValueError("pass guide kwargs inside GuideSpec or separately, not both")
+        requested_guide = guide if isinstance(guide, GuideSpec) else GuideSpec(guide, guide_kwargs or {})
+        self.guide_spec = self.guide_registry.validate(requested_guide)
+        self._param_store_state = None
+        self.training_history: List[float] = []
+        self.checkpoint_identity: Optional[str] = None
         self.optimizer = None
         self.svi: Optional[SVI] = None
         self._pyro_model = None
@@ -597,16 +725,24 @@ class BayzFlow:
         )
         return self.bayes_model
 
+    @_isolated_param_store
     def setup_svi(
         self,
-        loss_from_logits_fn: Callable[[torch.Tensor, Any], torch.Tensor],
-        predict_fn: Callable[[nn.Module, Any], torch.Tensor],
+        loss_from_logits_fn: Optional[Callable[[torch.Tensor, Any], torch.Tensor]] = None,
+        predict_fn: Optional[Callable[[nn.Module, Any], torch.Tensor]] = None,
         lr: float = 1e-3,
+        guide_kind: Optional[str] = None,
+        rank: Optional[int] = None,
+        guide: Optional[Union[str, GuideSpec]] = None,
+        guide_kwargs: Optional[Dict[str, Any]] = None,
+        loss_fn: Optional[Callable[[torch.Tensor, Any], torch.Tensor]] = None,
     ):
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built.")
+        loss_from_logits_fn = loss_from_logits_fn or loss_fn
+        if loss_from_logits_fn is None or predict_fn is None:
+            raise TypeError("loss_from_logits_fn and predict_fn are required")
 
-        pyro.clear_param_store()
         model = self.bayes_model
 
         def pyro_model(batch):
@@ -621,16 +757,38 @@ class BayzFlow:
             return logits
 
         self._pyro_model = pyro_model
-        self.guide = AutoLowRankMultivariateNormal(self._pyro_model, rank=20)
+        selected = guide if guide is not None else self.guide_spec
+        if guide_kind is not None:
+            # Preserve the original public spellings while making GuideSpec canonical.
+            aliases = {"low_rank": "auto_lowrank", "mean_field": "auto_diag"}
+            kind = aliases.get(guide_kind, guide_kind)
+            # The legacy selector owns the guide family; do not carry implicit
+            # constructor defaults from a different family across the override.
+            args = {}
+            if rank is not None:
+                args["rank"] = rank
+            selected = GuideSpec(kind, args)
+        elif rank is not None:
+            args = dict(self.guide_spec.kwargs)
+            args["rank"] = rank
+            selected = GuideSpec(self.guide_spec.kind, args)
+        if guide_kwargs is not None:
+            if isinstance(selected, GuideSpec):
+                selected = GuideSpec(selected.kind, guide_kwargs)
+            else:
+                selected = GuideSpec(selected, guide_kwargs)
+        self.guide_spec = self.guide_registry.validate(selected)
+        self.guide = self.guide_registry.create(self._pyro_model, self.guide_spec)
         self.optimizer = pyro.optim.Adam({"lr": lr})
         self.svi = SVI(self._pyro_model, self.guide, self.optimizer, loss=Trace_ELBO())
 
+    @_isolated_param_store
     def fit(
         self,
         train_loader: torch.utils.data.DataLoader,
         num_epochs: int = 5,
         device: Optional[torch.device] = None,
-    ):
+    ) -> List[float]:
         if self.svi is None:
             raise RuntimeError("SVI not set up. Call setup_svi(...) first.")
         if self.bayes_model is None:
@@ -639,6 +797,7 @@ class BayzFlow:
         if device is not None:
             self.bayes_model.to(device)
 
+        history = []
         for epoch in range(num_epochs):
             total = 0.0
             n = 0
@@ -646,8 +805,13 @@ class BayzFlow:
                 batch = _to_device_batch(batch, device)
                 total += float(self.svi.step(batch))
                 n += 1
-            print(f"[BayzFlow] Epoch {epoch+1}/{num_epochs}  ELBO: {total / max(n,1):.4f}")
+            epoch_loss = total / max(n, 1)
+            history.append(epoch_loss)
+            print(f"[BayzFlow] Epoch {epoch+1}/{num_epochs}  ELBO: {epoch_loss:.4f}")
+        self.training_history = history
+        return list(history)
 
+    @_isolated_param_store
     def predict(
         self,
         batch: Any,
@@ -655,9 +819,11 @@ class BayzFlow:
         num_samples: int = 16,
         device: Optional[torch.device] = None,
         return_samples: bool = False,
+        max_samples: int = 1000,
     ) -> Dict[str, torch.Tensor]:
         if self._pyro_model is None or self.guide is None or self.bayes_model is None:
             raise RuntimeError("Model/guide not initialised.")
+        _validate_sample_count(num_samples, max_samples)
 
         model = self.bayes_model
         if device is not None:
@@ -685,6 +851,155 @@ class BayzFlow:
             out["samples"] = logits_s
         return out
 
+    @_isolated_param_store
+    def posterior_samples(
+        self,
+        batch: Any,
+        num_samples: int = 100,
+        site_names: Optional[Sequence[str]] = None,
+        device: Optional[torch.device] = None,
+        max_samples: int = 1000,
+        max_output_bytes: int = 64 * 1024 * 1024,
+    ) -> Dict[str, torch.Tensor]:
+        """Draw bounded posterior samples for latent and selected model sites."""
+        if self._pyro_model is None or self.guide is None or self.bayes_model is None:
+            raise RuntimeError("Model/guide not initialised. Train or load posterior first.")
+        _validate_sample_count(num_samples, max_samples)
+        batch = _to_device_batch(batch, device)
+        self.bayes_model.eval()
+        self.guide.eval()
+        predictive = Predictive(
+            self._pyro_model,
+            guide=self.guide,
+            num_samples=num_samples,
+            return_sites=tuple(site_names) if site_names is not None else None,
+        )
+        with torch.no_grad():
+            samples = predictive(batch)
+        result = {name: value.detach().cpu() for name, value in samples.items() if torch.is_tensor(value)}
+        size_bytes = sum(value.numel() * value.element_size() for value in result.values())
+        if size_bytes > max_output_bytes:
+            raise ValueError(
+                f"posterior sample output is {size_bytes} bytes; limit is {max_output_bytes}"
+            )
+        return result
+
+    def posterior_summary(
+        self,
+        samples: Dict[str, torch.Tensor],
+        max_covariance_dimension: int = 256,
+        max_summary_bytes: int = 64 * 1024 * 1024,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Summarize posterior sites, retaining dense empirical covariance only when bounded."""
+        summary: Dict[str, Dict[str, Any]] = {}
+        summary_bytes = 0
+        for name, values in samples.items():
+            if not torch.is_tensor(values) or values.ndim < 1:
+                continue
+            flat = values.float().reshape(values.shape[0], -1)
+            output_bytes = 2 * values[0].numel() * 4 if values.shape[0] else 0
+            if flat.shape[1] <= max_covariance_dimension:
+                output_bytes += flat.shape[1] * flat.shape[1] * 4
+            summary_bytes += output_bytes
+            if summary_bytes > max_summary_bytes:
+                raise ValueError(f"posterior summary exceeds the {max_summary_bytes}-byte limit")
+            row: Dict[str, Any] = {
+                "mean": values.mean(0),
+                "variance": values.var(0, unbiased=False),
+                "sample_count": int(values.shape[0]),
+                "shape": list(values.shape[1:]),
+                "dtype": str(values.dtype),
+                "covariance": None,
+                "covariance_representation": "unavailable_site_dimension_limit",
+            }
+            if flat.shape[1] <= max_covariance_dimension:
+                row["covariance"] = torch.cov(flat.T) if flat.shape[0] > 1 else torch.zeros(
+                    (flat.shape[1], flat.shape[1]), dtype=flat.dtype
+                )
+                row["covariance_representation"] = "empirical_dense"
+            summary[name] = row
+        return summary
+
+    def save_posterior_samples(
+        self,
+        samples: Mapping[str, torch.Tensor],
+        path: str,
+        random_seed: Optional[int] = None,
+        max_artifact_bytes: int = 128 * 1024 * 1024,
+    ) -> Dict[str, Any]:
+        """Write bounded tensor-only posterior samples and a checksum manifest."""
+        if not samples or any(not isinstance(name, str) or not torch.is_tensor(value)
+                              for name, value in samples.items()):
+            raise ValueError("samples must be a non-empty mapping of site names to tensors")
+        tensors = {name: value.detach().cpu().contiguous() for name, value in samples.items()}
+        total_bytes = sum(value.numel() * value.element_size() for value in tensors.values())
+        if total_bytes > max_artifact_bytes:
+            raise ValueError(f"posterior sample artifact exceeds {max_artifact_bytes} bytes")
+        tensor_path = os.path.abspath(path)
+        _ensure_dir(os.path.dirname(tensor_path) or ".")
+        torch.save(tensors, tensor_path)
+        if os.path.getsize(tensor_path) > max_artifact_bytes:
+            os.remove(tensor_path)
+            raise ValueError(f"posterior sample artifact exceeds {max_artifact_bytes} bytes")
+        checksum = _sha256_file(tensor_path)
+        site_shapes = {name: list(value.shape) for name, value in tensors.items()}
+        sample_counts = {name: int(value.shape[0]) if value.ndim else None
+                         for name, value in tensors.items()}
+        manifest: Dict[str, Any] = {
+            "artifact_id": checksum,
+            "tensor_file": os.path.basename(tensor_path),
+            "artifact_sha256": checksum,
+            "model_identity": f"{type(self.base_model).__module__}.{type(self.base_model).__qualname__}",
+            "checkpoint_identity": self.checkpoint_identity,
+            "guide": self.guide_spec.to_dict(),
+            "guide_identity": self.guide_spec.identity,
+            "selected_layers": list(self.selected_module_names),
+            "posterior_site_names": list(tensors),
+            "tensor_shapes": site_shapes,
+            "tensor_dtypes": {name: str(value.dtype) for name, value in tensors.items()},
+            "sample_counts": sample_counts,
+            "random_seed": random_seed,
+            "covariance_representation": "not_included; use posterior_summary for bounded empirical covariance",
+            "tensor_bytes": total_bytes,
+        }
+        manifest_path = tensor_path + ".json"
+        with open(manifest_path, "w", encoding="utf-8") as stream:
+            json.dump(manifest, stream, sort_keys=True, indent=2)
+        return manifest
+
+    @staticmethod
+    def load_posterior_sample_artifact(
+        manifest_path: str,
+        max_artifact_bytes: int = 128 * 1024 * 1024,
+    ) -> Dict[str, torch.Tensor]:
+        """Verify and safely load a tensor-only posterior sample artifact."""
+        with open(manifest_path, encoding="utf-8") as stream:
+            manifest = json.load(stream)
+        filename = manifest.get("tensor_file")
+        if not isinstance(filename, str) or os.path.basename(filename) != filename:
+            raise ValueError("invalid tensor artifact filename")
+        tensor_path = os.path.join(os.path.dirname(os.path.abspath(manifest_path)), filename)
+        if os.path.getsize(tensor_path) > max_artifact_bytes:
+            raise ValueError("posterior tensor artifact exceeds the configured byte limit")
+        checksum = _sha256_file(tensor_path)
+        if checksum != manifest.get("artifact_sha256") or checksum != manifest.get("artifact_id"):
+            raise ValueError("posterior tensor artifact checksum mismatch")
+        try:
+            tensors = torch.load(tensor_path, map_location="cpu", weights_only=True)
+        except TypeError as exc:
+            raise RuntimeError("safe artifact loading requires PyTorch weights_only support") from exc
+        if not isinstance(tensors, dict) or any(not isinstance(k, str) or not torch.is_tensor(v)
+                                                 for k, v in tensors.items()):
+            raise ValueError("posterior tensor artifact has an invalid structure")
+        total = sum(value.numel() * value.element_size() for value in tensors.values())
+        if total > max_artifact_bytes:
+            raise ValueError("posterior tensor artifact expands beyond the configured byte limit")
+        if {name: list(value.shape) for name, value in tensors.items()} != manifest.get("tensor_shapes"):
+            raise ValueError("posterior tensor shapes do not match the manifest")
+        if {name: str(value.dtype) for name, value in tensors.items()} != manifest.get("tensor_dtypes"):
+            raise ValueError("posterior tensor dtypes do not match the manifest")
+        return tensors
+
     # ------------------------------------------------------------------------
     # NEW: (1) train once + optionally save posterior
     # ------------------------------------------------------------------------
@@ -697,6 +1012,10 @@ class BayzFlow:
         lr: float = 1e-3,
         device: Optional[torch.device] = None,
         save_dir: Optional[str] = None,
+        guide: Optional[Union[str, GuideSpec]] = None,
+        guide_kwargs: Optional[Dict[str, Any]] = None,
+        seed: Optional[int] = None,
+        experiment_metadata: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         Train SVI ONCE. Optionally save:
@@ -706,31 +1025,76 @@ class BayzFlow:
         """
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built. Call build_bayesian_model(...) first.")
+        try:
+            serializable_metadata = json.loads(json.dumps(dict(experiment_metadata or {}), allow_nan=False))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("experiment_metadata must contain only finite JSON-compatible values") from exc
 
-        self.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=lr)
-        self.fit(train_loader=train_loader, num_epochs=num_epochs, device=device)
+        if seed is not None:
+            pyro.set_rng_seed(seed)
+        self.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=lr,
+                       guide=guide, guide_kwargs=guide_kwargs)
+        self.training_history = self.fit(train_loader=train_loader, num_epochs=num_epochs, device=device)
 
         if save_dir is not None:
             _ensure_dir(save_dir)
             pyro_path = os.path.join(save_dir, "pyro_params.pt")
+            constraints_path = os.path.join(save_dir, "pyro_constraints.json")
             model_path = os.path.join(save_dir, "model_state.pt")
             meta_path = os.path.join(save_dir, "meta.json")
 
-            pyro.get_param_store().save(pyro_path)
-            torch.save(self.bayes_model.state_dict(), model_path)
+            with _engine_param_store(self):
+                pyro_state = pyro.get_param_store().get_state()
+                constraints_doc = _serialize_pyro_constraints(pyro_state["constraints"])
+                safe_params = {
+                    name: value.detach().cpu().clone()
+                    for name, value in pyro_state["params"].items()
+                }
+                torch.save({"params": safe_params}, pyro_path)
+                with open(constraints_path, "w", encoding="utf-8") as stream:
+                    json.dump(constraints_doc, stream, sort_keys=True, indent=2)
+                torch.save(self.bayes_model.state_dict(), model_path)
 
+            import platform
+
+            import pyro as pyro_package
+
+            artifacts = {
+                "variational_tensors": _sha256_file(pyro_path),
+                "constraints": _sha256_file(constraints_path),
+                "model_state": _sha256_file(model_path),
+            }
+            checkpoint_identity = hashlib.sha256(
+                json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
             meta = {
                 "selected_module_names": list(self.selected_module_names),
                 "prior_scales": dict(self.prior_scales),
+                "guide": self.guide_spec.to_dict(),
+                "guide_identity": self.guide_spec.identity,
+                "model_identity": f"{type(self.base_model).__module__}.{type(self.base_model).__qualname__}",
+                "checkpoint_identity": checkpoint_identity,
+                "artifact_sha256": artifacts,
+                "random_seed": seed,
+                "training_metrics": {"elbo_per_epoch": list(self.training_history)},
+                "experiment_metadata": serializable_metadata,
+                "software": {
+                    "bayzflow": _VERSION,
+                    "python": platform.python_version(),
+                    "torch": torch.__version__,
+                    "pyro": pyro_package.__version__,
+                },
             }
             with open(meta_path, "w") as f:
                 json.dump(meta, f, indent=2)
+            self.checkpoint_identity = checkpoint_identity
 
             print(f"[BayzFlow] Saved posterior to: {save_dir}")
 
     # ------------------------------------------------------------------------
     # NEW: load posterior (for analysis-only runs)
     # ------------------------------------------------------------------------
+    @_isolated_param_store
     def load_posterior(
         self,
         load_dir: str,
@@ -738,6 +1102,7 @@ class BayzFlow:
         predict_fn: Callable[[nn.Module, Any], torch.Tensor],
         device: Optional[torch.device] = None,
         strict_model_state: bool = True,
+        guide: Optional[Union[str, GuideSpec]] = None,
     ) -> None:
         """
         Load:
@@ -749,26 +1114,79 @@ class BayzFlow:
             raise RuntimeError("Bayesian model not built. Call build_bayesian_model(...) first.")
 
         pyro_path = os.path.join(load_dir, "pyro_params.pt")
+        constraints_path = os.path.join(load_dir, "pyro_constraints.json")
         model_path = os.path.join(load_dir, "model_state.pt")
+        meta_path = os.path.join(load_dir, "meta.json")
 
         if not os.path.exists(pyro_path):
             raise FileNotFoundError(pyro_path)
+        if not os.path.exists(constraints_path):
+            raise FileNotFoundError(constraints_path)
         if not os.path.exists(model_path):
             raise FileNotFoundError(model_path)
+        if not os.path.exists(meta_path):
+            raise FileNotFoundError(meta_path)
+
+        with open(meta_path, encoding="utf-8") as stream:
+            meta = json.load(stream)
+        expected_artifacts = meta.get("artifact_sha256", {})
+        for key, path in (("variational_tensors", pyro_path), ("constraints", constraints_path),
+                          ("model_state", model_path)):
+            if expected_artifacts.get(key) != _sha256_file(path):
+                raise ValueError(f"posterior artifact checksum mismatch: {key}")
+        artifact_identity = hashlib.sha256(
+            json.dumps(expected_artifacts, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if meta.get("checkpoint_identity") != artifact_identity:
+            raise ValueError("posterior checkpoint identity mismatch")
+        model_identity = f"{type(self.base_model).__module__}.{type(self.base_model).__qualname__}"
+        if meta.get("model_identity") != model_identity:
+            raise ValueError("posterior model identity does not match the supplied model")
 
         if device is not None:
             self.bayes_model.to(device)
 
         # Recreate model/guide structure (param names must match)
-        self.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=1e-3)
+        saved_layers = list(meta.get("selected_module_names", []))
+        saved_priors = dict(meta.get("prior_scales", {}))
+        if saved_layers and self.selected_module_names != saved_layers:
+            raise ValueError("posterior selected layers do not match the built Bayesian model")
+        if saved_priors and self.prior_scales != saved_priors:
+            raise ValueError("posterior prior scales do not match the built Bayesian model")
+        if guide is None and meta.get("guide"):
+            guide = GuideSpec.from_dict(meta["guide"])
+        elif guide is not None and meta.get("guide"):
+            requested = guide if isinstance(guide, GuideSpec) else GuideSpec(guide)
+            recorded = GuideSpec.from_dict(meta["guide"])
+            if self.guide_registry.validate(requested).identity != recorded.identity:
+                raise ValueError("requested guide does not match the guide recorded in this posterior")
+        self.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=1e-3,
+                       guide=guide)
 
         # Load deterministic weights (optional but recommended)
-        state = torch.load(model_path, map_location="cpu")
+        try:
+            state = torch.load(model_path, map_location="cpu", weights_only=True)
+        except TypeError as exc:
+            raise RuntimeError(
+                "safe posterior loading requires PyTorch with weights_only support"
+            ) from exc
         self.bayes_model.load_state_dict(state, strict=strict_model_state)
 
         # Load variational params
         pyro.clear_param_store()
-        pyro.get_param_store().load(pyro_path)
+        try:
+            safe_params = torch.load(pyro_path, map_location="cpu", weights_only=True)["params"]
+        except TypeError as exc:
+            raise RuntimeError(
+                "safe posterior loading requires PyTorch with weights_only support"
+            ) from exc
+        with open(constraints_path, encoding="utf-8") as stream:
+            constraints_doc = json.load(stream)
+        pyro.get_param_store().set_state({
+            "params": safe_params,
+            "constraints": _deserialize_pyro_constraints(constraints_doc),
+        })
+        self.checkpoint_identity = artifact_identity
 
         print(f"[BayzFlow] Loaded posterior from: {load_dir}")
 
@@ -779,8 +1197,9 @@ class BayzFlow:
     
 
     def measure_layers_per_example(
-        bf, batch, predict_fn, layer_names, num_samples=16, device=None
+        bf, batch, predict_fn, layer_names, num_samples=16, device=None, max_samples=1000
     ):
+        _validate_sample_count(num_samples, max_samples)
         model = bf.bayes_model
         if device is not None:
             model.to(device)
@@ -922,6 +1341,7 @@ class BayzFlow:
         num_samples: int = 32,
         device: Optional[torch.device] = None,
         include_logits: bool = True,
+        max_samples: int = 1000,
     ) -> Dict[str, Any]:
         """
         Runs MC Predictive under the current posterior and records per-layer scalar summaries.
@@ -935,6 +1355,7 @@ class BayzFlow:
         """
         if self._pyro_model is None or self.guide is None or self.bayes_model is None:
             raise RuntimeError("Model/guide not initialised. Train or load posterior first.")
+        _validate_sample_count(num_samples, max_samples)
 
         model = self.bayes_model
         if device is not None:
@@ -967,6 +1388,38 @@ class BayzFlow:
         return out
 
     @classmethod
+    def from_model_and_data(
+        cls,
+        model: nn.Module,
+        calib_loader: torch.utils.data.DataLoader,
+        calib_forward_fn: Callable[[nn.Module, Any], torch.Tensor],
+        bayes_patterns: Sequence[str],
+        num_calib_passes: int = 3,
+        calib_percentile: float = 0.9,
+        default_prior_scale: float = 0.1,
+        device: Optional[torch.device] = None,
+        verbose: bool = True,
+        guide: Union[str, GuideSpec] = "auto_lowrank",
+        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide_registry=default_registry,
+    ) -> "BayzFlow":
+        """Select layers, calibrate priors and build the Bayesian model without training."""
+        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
+        if verbose:
+            print("=== BayzFlow: candidate layers ===")
+        candidates = engine.list_candidates()
+        engine.select_modules(candidates, patterns=bayes_patterns)
+        engine.calibrate_priors(
+            calib_loader=calib_loader,
+            calib_forward_fn=calib_forward_fn,
+            num_passes=num_calib_passes,
+            percentile=calib_percentile,
+            device=device,
+        )
+        engine.build_bayesian_model(default_prior_scale=default_prior_scale)
+        return engine
+
+    @classmethod
     def auto(
         cls,
         model: nn.Module,
@@ -983,8 +1436,11 @@ class BayzFlow:
         lr: float = 1e-3,
         device: Optional[torch.device] = None,
         verbose: bool = True,
+        guide: Union[str, GuideSpec] = "auto_lowrank",
+        guide_kwargs: Optional[Dict[str, Any]] = None,
+        guide_registry=default_registry,
     ) -> "BayzFlow":
-        engine = cls(model)
+        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
 
         if verbose:
             print("=== BayzFlow: candidate layers ===")
@@ -1437,4 +1893,3 @@ if __name__ == "__main__":
         device=None,
     )
     print("\n[AGG TEST]", res)
-    
