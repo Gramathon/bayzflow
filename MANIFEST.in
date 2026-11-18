@@ -14,3 +14,4 @@ recursive-exclude * .DS_Store
 prune bayzflow/research
 prune bayzflow/observability
 prune bayzflow/archive
+prune docs/engineering

@@ -8,14 +8,14 @@ Command executed from the repository root:
 PYTHONPATH=/tmp/bayzflow-build-tools:$PYTHONPATH python3 -m build
 ```
 
-Result: built both distributions successfully with isolated setuptools 84.2.1 and wheel 0.48.0. Source distribution and wheel version are 0.2.0. The wheel contains `bayzflow/bayzflow.yaml` and the complete packaged `bayesian-inference` skill. It excludes the unrelated local research, observability and archive trees.
+Result: built both distributions successfully with isolated setuptools 84.2.1 and wheel 0.48.0. Source distribution and wheel version are 0.2.0. The wheel contains `bayzflow/bayzflow.yaml` and the complete packaged `bayesian-inference` skill. Both distributions exclude unrelated local research, observability and archive trees. The sdist omits internal `docs/engineering` validation reports so the recorded archive checksum remains reproducible.
 
 Artifacts:
 
 | File | SHA256 |
 |---|---|
-| `bayzflow-0.2.0.tar.gz` | `8ff15116731a2ee3a958d74a255dade81bd42622723b15fd75d8f1532143686b` |
-| `bayzflow-0.2.0-py3-none-any.whl` | `82ee585b85b9d50420cbf5e4a13bc0a223aa1a36ed630c9323134a480c81e23c` |
+| `bayzflow-0.2.0.tar.gz` | `33e1af86420b47c9e2793425b1bf0ac1efff9cc78f4f6c3d4b24ad1f110e387f` |
+| `bayzflow-0.2.0-py3-none-any.whl` | `18c363d57cb1fab6ba51ea28151759d33d979a68ff2c6ecae50be581a84fd533` |
 
 ## Installed-wheel checks
 
