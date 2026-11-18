@@ -4,26 +4,36 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing signed release tag, for example v0.2.0
+        description: Version to sign and publish, for example v0.2.0
         required: true
         type: string
       run_id:
-        description: Successful CI push run for the exact tagged commit
+        description: Successful CI push run on main containing bayzflow-candidate
         required: true
         type: string
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: release
     permissions:
       actions: read
       contents: write
       attestations: read
+      id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
@@ -33,35 +43,103 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify release tag and candidate run
+      - name: Verify the candidate run and distributions
+        id: candidate
         run: |
-          set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$VALIDATION_RUN" =~ ^[0-9]+$ ]]
-          commit=$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Use a version tag such as v0.2.0."; exit 1;
+          }
+          [[ "$VALIDATION_RUN" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Use the run ID from a successful CI push on main."; exit 1;
+          }
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN" --jq '
+            select(.head_branch == "main" and .event == "push" and
+                   .path == ".github/workflows/ci.yml" and .conclusion == "success") | .head_sha
+          ')
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::The selected run must be a successful CI push on main."; exit 1;
+          }
           git merge-base --is-ancestor "$commit" HEAD
-          [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" == tag ]]
-          tag_object=$(git rev-parse "refs/tags/$RELEASE_TAG")
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" --jq '.verification.verified')" == true ]]
-          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN")
-          jq -e --arg sha "$commit" '
-            .head_sha == $sha and .head_branch == "main" and .event == "push" and
-            .path == ".github/workflows/ci.yml" and .conclusion == "success"
-          ' <<<"$run"
           gh run download "$VALIDATION_RUN" --name bayzflow-candidate --dir candidate
+          version="${RELEASE_TAG#v}"
           cd candidate
+          sha256sum "bayzflow-$version-py3-none-any.whl" "bayzflow-$version.tar.gz" \
+            runtime-sbom.json SOURCE_COMMIT benchmark.json | cmp SHA256SUMS -
           sha256sum -c SHA256SUMS
           [[ "$(cat SOURCE_COMMIT)" == "$commit" ]]
-          version="${RELEASE_TAG#v}"
-          [[ -f "bayzflow-$version-py3-none-any.whl" && -f "bayzflow-$version.tar.gz" ]]
-      - name: Check build provenance
-        run: |
-          for path in candidate/*.whl candidate/*.tar.gz candidate/runtime-sbom.json; do
+          for path in "bayzflow-$version-py3-none-any.whl" "bayzflow-$version.tar.gz" runtime-sbom.json; do
             gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml" --source-ref refs/heads/main
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml" \
+              --source-ref refs/heads/main --source-digest "$commit" --deny-self-hosted-runners
           done
-      - name: Publish the verified distributions
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - name: Install pinned Sigstore Git signer
         run: |
-          gh release create "$RELEASE_TAG" --verify-tag --generate-notes \
-            candidate/*.whl candidate/*.tar.gz candidate/SHA256SUMS \
-            candidate/SOURCE_COMMIT candidate/runtime-sbom.json candidate/benchmark.json
+          dir="$RUNNER_TEMP/bayzflow-signing"
+          mkdir "$dir"
+          gh release download v0.18.0 --repo sigstore/gitsign \
+            --pattern gitsign_0.18.0_linux_amd64 --dir "$dir"
+          cd "$dir"
+          printf '%s\n' '2bc625472a08fea3bb6a57982c7d8b4978d1032251d305ceef3bf2ded0ca4483  gitsign_0.18.0_linux_amd64' | sha256sum -c
+          install -m 0755 gitsign_0.18.0_linux_amd64 gitsign
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: Sign and verify the release tag
+        id: tag
+        env:
+          SOURCE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          GITSIGN_TOKEN_PROVIDER: github-actions
+        run: |
+          ref="refs/tags/$RELEASE_TAG"
+          digest=$(sha256sum candidate/SHA256SUMS | cut -d' ' -f1)
+          message="Bayzflow $RELEASE_TAG | CI $VALIDATION_RUN | SHA256SUMS $digest"
+          if ! git show-ref --verify --quiet "$ref"; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                -c gpg.format=x509 -c gpg.x509.program=gitsign \
+                tag -s -m "$message" "$RELEASE_TAG" "$SOURCE_COMMIT"
+          fi
+          [[ "$(git cat-file -t "$ref")" == tag ]]
+          [[ "$(git rev-parse "$ref^{commit}")" == "$SOURCE_COMMIT" ]]
+          [[ "$(git for-each-ref --format='%(contents:subject)' "$ref")" == "$message" ]]
+          gitsign verify-tag "$RELEASE_TAG" \
+            --certificate-identity "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          object=$(git rev-parse "$ref")
+          remote=$(git ls-remote --refs origin "$ref" | cut -f1)
+          if [[ -z "$remote" ]]; then
+            git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "$ref"
+          fi
+          [[ "$(git ls-remote --refs origin "$ref" | cut -f1)" == "$object" ]]
+          printf 'object=%s\n' "$object" >> "$GITHUB_OUTPUT"
+      - name: Verify draft assets and publish
+        env:
+          TAG_OBJECT: ${{ steps.tag.outputs.object }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          manifest=(SHA256SUMS "bayzflow-$version-py3-none-any.whl" "bayzflow-$version.tar.gz"
+                    SOURCE_COMMIT runtime-sbom.json benchmark.json)
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes
+          fi
+          draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)
+          for file in "${manifest[@]}"; do
+            assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+            if ! grep -Fxq -- "$file" <<<"$assets"; then
+              [[ "$draft" == true ]]
+              gh release upload "$RELEASE_TAG" "candidate/$file"
+            fi
+          done
+          [[ "$(gh release view "$RELEASE_TAG" --json assets --jq '.assets | length')" == "${#manifest[@]}" ]]
+          dest="$RUNNER_TEMP/bayzflow-release-verification"
+          gh release download "$RELEASE_TAG" --dir "$dest"
+          for file in "${manifest[@]}"; do
+            cmp "candidate/$file" "$dest/$file"
+          done
+          [[ "$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG" | cut -f1)" == "$TAG_OBJECT" ]]
+          if [[ "$draft" == true ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false
+          fi
+          url=$(gh release view "$RELEASE_TAG" --json isDraft,isImmutable,url \
+            --jq 'select(.isDraft == false and .isImmutable == true) | .url')
+          [[ "$url" == "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG" ]]
+          echo "$url"
