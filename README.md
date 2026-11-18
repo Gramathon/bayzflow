@@ -48,11 +48,19 @@ Built-in guides are `auto_normal`, `auto_diag`, `auto_lowrank`, and `auto_fullra
 
 Custom Pyro guide factories are registered by trusted Python code through `GuideRegistry.register`. Serialized configuration selects a local registration; it cannot provide Python code or an import path. See [custom guide notes](docs/guides.md).
 
-## CLI and MCP discovery
+## CLI and MCP inference
 
 `bayzflow --version`, `bayzflow doctor`, `bayzflow guide list`, `bayzflow guide inspect auto_lowrank`, and `bayzflow guide validate guide.yaml` provide diagnostics and guide discovery. The packaged skill is available through `bayzflow skill status` and `bayzflow skill install`.
 
-Install `bayzflow[mcp]` to run `bayzflow-mcp --stdio`. The current MCP server exposes read-only local diagnostics, registered-model inspection, layer candidate discovery, and trusted guide listing/schema/validation. It does not expose training, posterior sampling, measurement, remote HTTP, or arbitrary filesystem operations. Models and custom guides must be registered by trusted host Python before server creation.
+Install `bayzflow[mcp]` and configure your MCP client to launch the following local stdio command on Linux:
+
+```bash
+bayzflow-mcp --stdio --demo --workspace ~/.local/state/bayzflow-demo
+```
+
+`bayzflow model inspect regression` describes the bundled demonstration model. In MCP, inspect it with `model_inspect` and `layer_candidates`. Request `bayesian_plan` with model `regression`, layers `["0"]`, kind `auto_diag`, and empty kwargs. Review the returned limits and pass its `plan_id` and unchanged `request` to `posterior_fit` with an idempotency key. Poll `job_status` until it reports success. Supply the fit job ID as `checkpoint_id` to sample the posterior or measure parameter and predictive uncertainty. Read tensor artifacts in pages using the IDs and checksums returned by `artifact_list`.
+
+An operator enables operations by selecting a private workspace. Trusted Python hosts can register CPU models, workload adapters, and custom guides before server creation. See [MCP usage and resource limits](docs/MCP.md).
 
 ## EXPCON
 
@@ -69,7 +77,7 @@ EXPCON owns experiment definition, freezing, execution admission, evidence colle
 
 ## Release status
 
-Version 0.2.0 is an implementation candidate, not a production release. MCP operational jobs, full scientific comparison, supported Python matrix, CI/release automation, and clean wheel installation remain release gates until documented as completed in [release readiness](docs/engineering/RELEASE_READINESS.md).
+Version 0.2.0 is a release candidate. See [release readiness](docs/engineering/RELEASE_READINESS.md) for verified evidence and publication gates.
 
 ## Development
 

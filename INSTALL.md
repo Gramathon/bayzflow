@@ -25,4 +25,4 @@ bayzflow guide list
 bayzflow skill status
 ```
 
-Run the local discovery-only MCP service with `bayzflow-mcp --stdio` after installing the `mcp` extra. See the repository [README](README.md) for inference and security scope. GPU support depends on the PyTorch build and has not been validated by the 0.2.0 candidate checks.
+Run local MCP discovery with `bayzflow-mcp --stdio`, or use `bayzflow-mcp --stdio --demo --workspace ~/.local/state/bayzflow-demo` for bounded inference on Linux after installing the `mcp` extra. See the repository [README](README.md) for inference and security scope. GPU support depends on the PyTorch build and has not been validated by the 0.2.0 candidate checks.

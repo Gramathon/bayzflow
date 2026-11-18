@@ -27,3 +27,9 @@
 ## Not implemented / release blockers
 
 Operational MCP fit/sample/measurement tools, durable jobs, resource admission and artifact service remain absent. There is no full EXPCON frozen-contract example executed against the current EXPCON checkout. No analytical Bayesian benchmark, Python 3.11/3.12 run, GPU validation, vulnerability/secret scan, SBOM/provenance, or publication was completed. The environment contains pre-existing unrelated research files; they are excluded from the implementation commit.
+
+## Acceptance evidence follow-up
+
+The initial candidate above was extended with bounded Linux CPU jobs, durable status and cancellation, checksum verified artifact reads, parameter and predictive measurements, and native covariance summaries. The full rank round trip exposed an unsupported Pyro Cholesky constraint, which is now represented declaratively. The installed benchmark includes a model-specific custom Pyro guide, and EXPCON 0.2.0 completed and verified the same workload from the candidate wheel. See the scientific, MCP, EXPCON, packaging and security reports for commands, results and limits.
+
+The final CI workflow tests the installed wheel on Python 3.10–3.12 and binds its artifacts to the source commit. The manual publication workflow requires a successful main commit run and signed release tag. The initial blocker list above records the state before this follow-up.

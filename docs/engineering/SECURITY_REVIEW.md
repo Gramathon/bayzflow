@@ -1,17 +1,9 @@
 # Security review
 
-## Controls present in the candidate
+The stdio host controls model and guide registration and selects the private workspace. Plan requests bind registered model weights, guide identity, layers, seed and training configuration. Operational client arguments contain data only. Client requests cannot supply a filesystem path, callable, package, model import, shell command, or checkpoint payload.
 
-- MCP accepts only typed JSON configuration for known guide identifiers. The server does not accept arbitrary Python, dotted import names, local paths, commands, serialized functions, or client-selected checkpoint paths.
-- The currently exposed MCP tools are discovery-only. Model operations require objects registered by trusted host Python and do not execute training.
-- Posterior weights are loaded using PyTorch `weights_only=True`. Guide parameters are tensor-only; constraints are parsed from JSON against a small fixed set (`real`, zero-bound softplus-positive, greater-than, interval). Unknown constraints fail closed.
-- Model state includes Bayesian prior tensors, and metadata records selected layers, prior scales, guide spec and guide digest.
-- Bayzflow serializes engine access to Pyro's global parameter store under a process-wide lock and snapshots per-engine state between operations.
+Workers enforce elapsed time, virtual memory and individual file limits. Admission checks constrain model size, estimated guide parameters, epochs, samples, concurrency and job count. Only expected files from successful operations are published, within the total artifact budget. Artifact reads use regular file descriptors with symlink and hardlink rejection, enforce byte limits and verify hashes. Failed workers return a bounded error code. A process boundary and Linux limits constrain approved workloads; the operator still trusts the model, data adapter, guide implementation and workspace.
 
-## Remaining boundary gaps
+Checkpoint tensor loads use PyTorch's `weights_only=True` and require trusted provenance. The dependency floor is PyTorch 2.6.0, which patches the weights-only deserialization vulnerability affecting 2.5.1 and earlier. Pyro constraints rehydrate from a JSON allowlist. See [PyTorch's advisory](https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6).
 
-The parameter-store lock is not a sandbox and does not coordinate other libraries that use Pyro in the same process. Model code and registered custom guide factories execute as trusted Python. The MCP server does not yet expose bounded jobs, artifacts, or workspace reads, so the issue's filesystem, resource, artifact-identity and job-admission requirements remain unimplemented. There is no external-network transport. No dependency audit, secret scan, static security tool, oversized-file test or adversarial serialization test was executed.
-
-## Assessment
-
-The current discovery interface has a narrow local trust boundary, but the broader production MCP security requirements are not satisfied. Do not expose it as a remote service or describe this candidate as production-ready.
+Local validation used `bandit -r bayzflow/guides bayzflow/mcp -lll -iii`, which reported no findings. `detect-secrets scan` reported no candidates in tracked files. `pip-audit --requirement` over resolved core and MCP requirements reported no known vulnerabilities. CI also audits the installed inventory before uploading the candidate. Automated checks cover the rejection cases listed in [MCP validation](MCP_VALIDATION.md). No adversarial third-party code was executed. The operational service exposes local stdio and a Linux CPU worker, and does not grant mutually untrusted users access to a shared workspace.

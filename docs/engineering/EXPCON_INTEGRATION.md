@@ -1,7 +1,27 @@
-# EXPCON integration boundary
+# EXPCON integration
 
-EXPCON remains responsible for experiment identity, contract validation/freeze, execution admission, run lifecycle, evidence collection, verification and scientific adjudication. Bayzflow is the inference workload and does not depend on EXPCON in its core runtime.
+Bayzflow computes the posterior and writes the metrics, checkpoint and tensor artifacts. EXPCON freezes the inputs, dispatches the workload, verifies its evidence and adjudicates the frozen evaluation. The experiment uses schema 1 and EXPCON 0.2.0. Bayzflow has no runtime dependency on EXPCON.
 
-The candidate's posterior metadata contains selected module names, calibrated prior scales, guide specification/identity, model class, software versions, training seed, per-epoch ELBO metrics, checksums and optional JSON experiment configuration. `save_posterior_samples` writes tensor-only samples with a sidecar describing site names/shapes/dtypes, seed, model/guide/checkpoint identity and SHA256. A controlled EXPCON stage should additionally bind Bayzflow source and dependency-lock identities, model/data inputs, training arguments, metric definitions and hashes of every tensor artifact. EXPCON then collects and verifies those declared outputs independently.
+Prepare a fresh project from a built Bayzflow wheel. The script installs the wheel and dependencies in a CPU venv with uv, records the wheel checksum, and commits the frozen-run inputs. Then run the EXPCON lifecycle from that project.
 
-This repository includes no executed EXPCON contract or workload. The live EXPCON README inspected for this work documents `init`, `validate`, `freeze`, `bundle`, `verify-bundle`, `run`, `fetch`, `verify`, `artifacts`, and `adjudicate`; it also states that local arbitrary Python workloads are not sandboxed. No Bayzflow-specific current EXPCON schema integration was validated. A frozen experiment example and verified handoff remain release blockers.
+```bash
+bash examples/expcon/prepare.sh dist/bayzflow-0.2.0-py3-none-any.whl /tmp/bayzflow-expcon-demo
+cd /tmp/bayzflow-expcon-demo
+expcon inspect experiments/gaussian --json
+expcon validate experiments/gaussian --json
+expcon freeze experiments/gaussian --json
+expcon diff experiments/gaussian --json
+expcon bundle experiments/gaussian --json
+expcon verify-bundle experiments/gaussian/bundle --json
+expcon run experiments/gaussian --backend local --json
+# Set RUN_ID from the returned run ID.
+expcon status "$RUN_ID" --json
+expcon fetch "$RUN_ID" --json
+expcon artifacts "$RUN_ID" --json
+expcon verify "$RUN_ID" --json
+expcon adjudicate "$RUN_ID" --json
+```
+
+The first frozen attempt could not dispatch because EXPCON did not parse uv's `==3.12.*` constraint. The successor used a compatible range and preserved the model, seed, dataset and acceptance criterion. The final candidate wheel was verified in `v003`, run `run-BAYZFLOW-GAUSSIAN-53f67837`. EXPCON returned `COMPLETED / COMPLIANT / VERIFIED / SUPPORTED` with all required outputs. The worst mean error across the two frozen guides was **0.12218** against the limit **0.35**. The [verification record](evidence/expcon-verification.json) preserves contract, bundle, evidence and artifact identities.
+
+For agent interpretation, supply the verified metrics and adjudication to Pi or Sol-Pi and ask whether they support the frozen posterior mean hypothesis. Keep the claim scoped to this fixture and this threshold. A Pi CLI attempt in an isolated agent directory could not authenticate because no provider API key was available. The EXPCON verification and deterministic adjudication ran independently.

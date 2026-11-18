@@ -16,3 +16,7 @@
 `setup_svi(guide_kind="low_rank")` and `setup_svi(guide_kind="mean_field")` remain aliases. The experiment runner trains the configured epoch count without validation-based early stopping. A configured checkpoint `outdir` now contains a complete posterior directory (`meta.json`, model and variational tensors, constraint JSON); the old `best_name` single-file behavior is not used. The old `torch.save` Pyro parameter-store checkpoints are not accepted by the safe checkpoint loader. Rebuild the Bayesian model with the original selected layers and prior configuration, then load a checkpoint written by 0.2.0. Python 3.8 and 3.9 are no longer declared supported.
 
 This is not yet a release. See `docs/engineering/RELEASE_READINESS.md` for open gates.
+
+- Run bounded Linux CPU jobs through MCP with durable job IDs, cancellation, idempotency and paged tensor artifacts.
+- Inspect native guide covariance factors and compare built-in and custom guides on an analytical regression fixture.
+- Require PyTorch 2.6 or newer for checkpoint loading and document the verified EXPCON lifecycle.

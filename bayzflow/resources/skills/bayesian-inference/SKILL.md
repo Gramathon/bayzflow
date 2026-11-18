@@ -11,6 +11,8 @@ Bayzflow replaces selected supported PyTorch layers with Pyro latent-weight laye
 
 Run `bayzflow doctor` and `bayzflow guide list`. Inspect a guide with `bayzflow guide inspect auto_lowrank`. Validate a built-in guide YAML file with `bayzflow guide validate path/to/guide.yaml`.
 
+For the demo on Linux, configure the MCP client to launch `bayzflow-mcp --stdio --demo --workspace <private-operator-directory>`. Use `model_list`, `layer_candidates`, `guide_list` and `guide_validate`. Send a `bayesian_plan` for an approved model. Review the resource limits and send the unchanged request and plan ID to `posterior_fit` with an idempotency key. Poll `job_status` and use the successful fit ID for `posterior_sample`, `measure_epistemic` or `measure_layers`. Use `artifact_list` and `artifact_read` to obtain bounded pages and verify their SHA256. `job_cancel` requests cancellation. Do not retry a failed run with changed scientific settings unless the experiment permits it.
+
 Use the Python API with a trusted model and data loader:
 
 ```python
@@ -39,7 +41,7 @@ Selected layers must be confirmed with `bf.list_candidates()` and the measured i
 
 ## Preserve evidence and interpret results
 
-Keep the posterior directory, guide specification, selected module names, random seeds, data identity, training configuration, package versions, and checksums with the experiment. `predict` returns sample tensors; `save_posterior_samples` writes bounded tensor artifacts with a metadata sidecar, and `BayzFlow.load_posterior_sample_artifact` verifies and reloads them. Report bounded summaries for large results. Predictive standard deviation combines uncertainty sources and must not be reported as a calibrated epistemic estimate without a separate validation design. Layer activation dispersion and attention entropy are distinct measurements; attention entropy is not epistemic uncertainty.
+Keep the posterior directory, guide specification, selected module names, random seeds, data identity, training configuration, package versions, and checksums with the experiment. `predict` returns sample tensors; `save_posterior_samples` writes bounded tensor artifacts with a metadata sidecar, and `BayzFlow.load_posterior_sample_artifact` verifies and reloads them. Report bounded summaries for large results. The MCP predictive epistemic measurement varies weights and excludes observation noise. Its parameter variance, predictive variance, activation variability, and attention entropy refer to different quantities. Layer activation dispersion and attention entropy are distinct measurements; attention entropy is not epistemic uncertainty.
 
 For EXPCON, declare the Bayzflow invocation, exact source/dependency identity, inputs, seeds, guide and layer configuration, output metrics, posterior tensor artifacts, and their checksums in the frozen experiment. Let EXPCON freeze, execute, collect and verify evidence. A successful run is not itself a scientific verdict.
 

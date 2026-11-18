@@ -1,0 +1,477 @@
+{
+  "environment": {
+    "torch": "2.15.0+cpu",
+    "pyro": "1.9.2",
+    "bayzflow": "0.2.0"
+  },
+  "analytical_mean": [
+    0.41755545139312744,
+    0.11619791388511658
+  ],
+  "analytical_covariance": [
+    [
+      0.3840932846069336,
+      -0.4025220572948456
+    ],
+    [
+      -0.4025220274925232,
+      0.4849662780761719
+    ]
+  ],
+  "reverse_kl_diagonal_variances": [
+    0.05000000074505806,
+    0.06313131004571915
+  ],
+  "observation_variance": 0.25,
+  "steps": 1800,
+  "runs": [
+    {
+      "guide": {
+        "kind": "auto_normal",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 7,
+      "train_seconds": 5.338004940887913,
+      "elbo_loss_first_window": 3.70005185931921,
+      "elbo_loss_last_window": 3.4529371328651903,
+      "mean_l2_error": 0.09093223512172699,
+      "covariance_frobenius_error": 0.7820268273353577,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.04206949472427368,
+          0.002221541479229927
+        ],
+        [
+          0.002221541479229927,
+          0.07636995613574982
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.056247737258672714,
+      "sample_count": 512,
+      "posterior_sha256": "3f940e20c9e6bec0309378941649a45381a5a6348933f82feb160828d277390b",
+      "checkpoint_identity": "d8aa4fa21a7b1bdd1ed9bc0f95f550167d9b1bfd4ee4e3df12d9e25302b08a2d"
+    },
+    {
+      "guide": {
+        "kind": "auto_diag",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoDiagonalNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 7,
+      "train_seconds": 4.2371945740887895,
+      "elbo_loss_first_window": 3.7379048416018485,
+      "elbo_loss_last_window": 3.4184708090126517,
+      "mean_l2_error": 0.1472381353378296,
+      "covariance_frobenius_error": 0.7853589057922363,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.04368296638131142,
+          -0.0016468215035274625
+        ],
+        [
+          -0.0016468215035274625,
+          0.06128305196762085
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.03680118918418884,
+      "sample_count": 512,
+      "posterior_sha256": "ee6c2cf8df7eb54721c2f5640051f3e43a131a899913a16778d116e4402204d3",
+      "checkpoint_identity": "7773eb799f578d80cda9e3445d3837479372722e4e3fa441e9f45b4a14d24f74"
+    },
+    {
+      "guide": {
+        "kind": "auto_lowrank",
+        "kwargs": {
+          "rank": 1
+        },
+        "implementation_id": "pyro.infer.autoguide.AutoLowRankMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 7,
+      "train_seconds": 6.255916894995607,
+      "elbo_loss_first_window": 3.1583955816924574,
+      "elbo_loss_last_window": 2.316028244793415,
+      "mean_l2_error": 0.0758904218673706,
+      "covariance_frobenius_error": 0.16108103096485138,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.26152607798576355,
+          -0.3288171887397766
+        ],
+        [
+          -0.3288171887397766,
+          0.49268433451652527
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.023206880316138268,
+      "sample_count": 512,
+      "posterior_sha256": "a80c9bdeb16946c3cc96b6bc9b41b771b03fcfe58edb97fb20dc8d05d469d271",
+      "checkpoint_identity": "b9ee606f4e12508e4b19aa0271ac2534872a8072ace4603a6462658aafe773e6"
+    },
+    {
+      "guide": {
+        "kind": "auto_fullrank",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 7,
+      "train_seconds": 5.464451262028888,
+      "elbo_loss_first_window": 3.4853811429440977,
+      "elbo_loss_last_window": 2.2782452164590357,
+      "mean_l2_error": 0.15839776396751404,
+      "covariance_frobenius_error": 0.06833601742982864,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.3769523501396179,
+          -0.42601141333580017
+        ],
+        [
+          -0.42601141333580017,
+          0.5442563891410828
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.009145410731434822,
+      "sample_count": 512,
+      "posterior_sha256": "1a3b749e04e4bc57f5a3863fbb0f21b184f042aa70701d3200ab46d43561f886",
+      "checkpoint_identity": "4caf7a1dd930aa71ac2732a83169684b25b780b8ed598dc247646227b6757fc7"
+    },
+    {
+      "guide": {
+        "kind": "custom:correlated_regression",
+        "kwargs": {
+          "init_scale": 0.2
+        },
+        "implementation_id": "__main__.correlated_guide#e9339c02d06f5bea2ead5b7d59a5eaa2fe576fa6c3582b2925d501523bc2506a",
+        "implementation_version": "1"
+      },
+      "seed": 7,
+      "train_seconds": 4.973604683065787,
+      "elbo_loss_first_window": 2.7762279556691647,
+      "elbo_loss_last_window": 2.2839952535927295,
+      "mean_l2_error": 0.10848233848810196,
+      "covariance_frobenius_error": 0.03136071190237999,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.37771111726760864,
+          -0.40258124470710754
+        ],
+        [
+          -0.40258124470710754,
+          0.5156705975532532
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.020648358389735222,
+      "sample_count": 512,
+      "posterior_sha256": "60995cad3fe5a09230d1208e3cf8939b555f7bcefc2bbb99c2f9edb37b053f05",
+      "checkpoint_identity": "93f81a4daabf238ab57b26184febe0a6dc84b7bc4201abf34479ad88b0ff8cc4"
+    },
+    {
+      "guide": {
+        "kind": "auto_normal",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 19,
+      "train_seconds": 4.298602398019284,
+      "elbo_loss_first_window": 3.568420558720827,
+      "elbo_loss_last_window": 3.3853652484714987,
+      "mean_l2_error": 0.0344550758600235,
+      "covariance_frobenius_error": 0.7717328071594238,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.07402360439300537,
+          0.0017756310990080237
+        ],
+        [
+          0.0017756310990080237,
+          0.06961692869663239
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.08729123324155807,
+      "sample_count": 512,
+      "posterior_sha256": "9c3312b7e74301783c63475dc498c4974275e6498ef4bcf405bc48df0a71a4c5",
+      "checkpoint_identity": "9e3ad45fec4a5753139ad093291cd19a415911002da94c223a6cf1b32be6680a"
+    },
+    {
+      "guide": {
+        "kind": "auto_diag",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoDiagonalNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 19,
+      "train_seconds": 4.258280568988994,
+      "elbo_loss_first_window": 3.4749592879414557,
+      "elbo_loss_last_window": 3.4211718407273293,
+      "mean_l2_error": 0.06048528850078583,
+      "covariance_frobenius_error": 0.7701918482780457,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.06389309465885162,
+          -0.0028283530846238136
+        ],
+        [
+          -0.0028283530846238136,
+          0.07125476747751236
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.06724967807531357,
+      "sample_count": 512,
+      "posterior_sha256": "e81b5acf5e547954947246ba6c5de385ffe2efaf5edb6f25b85d9bf8c418290a",
+      "checkpoint_identity": "cbfa87d77a3342e3b5a343dc01d83607d9b1ca9f7deebf2fbc7f289d61baa829"
+    },
+    {
+      "guide": {
+        "kind": "auto_lowrank",
+        "kwargs": {
+          "rank": 1
+        },
+        "implementation_id": "pyro.infer.autoguide.AutoLowRankMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 19,
+      "train_seconds": 6.043657095986418,
+      "elbo_loss_first_window": 3.2609271532297135,
+      "elbo_loss_last_window": 2.3955874852091075,
+      "mean_l2_error": 0.08475758880376816,
+      "covariance_frobenius_error": 0.19009725749492645,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.3636598289012909,
+          -0.32056260108947754
+        ],
+        [
+          -0.32056260108947754,
+          0.33568552136421204
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.018258893862366676,
+      "sample_count": 512,
+      "posterior_sha256": "25c6662ff3b57f22d98b5ac62d76161c59a032a8abacfac4d7494d1f739614e2",
+      "checkpoint_identity": "10b6baeb3aab9527b03099e9296375f70fb042d6d5d23b5761bc1cd37173609e"
+    },
+    {
+      "guide": {
+        "kind": "auto_fullrank",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 19,
+      "train_seconds": 5.236055621062405,
+      "elbo_loss_first_window": 3.1461236338317393,
+      "elbo_loss_last_window": 2.3432403798401356,
+      "mean_l2_error": 0.10192836821079254,
+      "covariance_frobenius_error": 0.06952190399169922,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.43174317479133606,
+          -0.4348898231983185
+        ],
+        [
+          -0.4348898231983185,
+          0.5065865516662598
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.010384698398411274,
+      "sample_count": 512,
+      "posterior_sha256": "3c3429fd399ec078727b434c4912aaaafa2513149237abdec4f96110df4442a6",
+      "checkpoint_identity": "352db7b25e51ca3afb4399cd10388c36bc01c7b5658ef8723b28ed93d39cdece"
+    },
+    {
+      "guide": {
+        "kind": "custom:correlated_regression",
+        "kwargs": {
+          "init_scale": 0.2
+        },
+        "implementation_id": "__main__.correlated_guide#e9339c02d06f5bea2ead5b7d59a5eaa2fe576fa6c3582b2925d501523bc2506a",
+        "implementation_version": "1"
+      },
+      "seed": 19,
+      "train_seconds": 4.951471258071251,
+      "elbo_loss_first_window": 3.0509335239231588,
+      "elbo_loss_last_window": 2.3949858814477922,
+      "mean_l2_error": 0.12217914313077927,
+      "covariance_frobenius_error": 0.09862042963504791,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.441771924495697,
+          -0.4539484679698944
+        ],
+        [
+          -0.4539484679698944,
+          0.5182800889015198
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.008482065983116627,
+      "sample_count": 512,
+      "posterior_sha256": "4bc7513274bb67dd43210e2e70b8a7a4f1464fe2dde5f9d9c15ae15cfeee7ae9",
+      "checkpoint_identity": "1f65bf9b12927e7312fa2171dbfa41bb14869e81a1cb2baad3528b29ca6029fe"
+    },
+    {
+      "guide": {
+        "kind": "auto_normal",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 43,
+      "train_seconds": 4.21362134302035,
+      "elbo_loss_first_window": 3.6849564062058926,
+      "elbo_loss_last_window": 3.363870539367199,
+      "mean_l2_error": 0.007734599523246288,
+      "covariance_frobenius_error": 0.7824626564979553,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.047622956335544586,
+          0.001352089224383235
+        ],
+        [
+          0.001352089224383235,
+          0.06926584243774414
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.05467652156949043,
+      "sample_count": 512,
+      "posterior_sha256": "1f0be78f9d2c4ceadf9c0f2e5e09a4e0b606f2e6727752d81130ed9fe8e5c68c",
+      "checkpoint_identity": "98414ca5834bc98705be4fea8ead17d5293cc16b05192ac96b37050488aaab26"
+    },
+    {
+      "guide": {
+        "kind": "auto_diag",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoDiagonalNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 43,
+      "train_seconds": 4.253635274013504,
+      "elbo_loss_first_window": 5.855333723723889,
+      "elbo_loss_last_window": 3.3172052682936193,
+      "mean_l2_error": 0.03583872318267822,
+      "covariance_frobenius_error": 0.7729603052139282,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.049618370831012726,
+          0.0005459518870338798
+        ],
+        [
+          0.0005459518870338798,
+          0.08413393795490265
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.06875822693109512,
+      "sample_count": 512,
+      "posterior_sha256": "12d41ce73e4a595e4d71e776a62321dce47736b01781e5870e75b40d83a9bfe0",
+      "checkpoint_identity": "caa28b5852260c0376dc796f219ddff010fc6c3e46ae46b94a6911df1c766fd9"
+    },
+    {
+      "guide": {
+        "kind": "auto_lowrank",
+        "kwargs": {
+          "rank": 1
+        },
+        "implementation_id": "pyro.infer.autoguide.AutoLowRankMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 43,
+      "train_seconds": 6.017955521936528,
+      "elbo_loss_first_window": 5.6525940218567845,
+      "elbo_loss_last_window": 2.323262920677662,
+      "mean_l2_error": 0.13680776953697205,
+      "covariance_frobenius_error": 0.1902748942375183,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.28291064500808716,
+          -0.3072148859500885
+        ],
+        [
+          -0.3072148859500885,
+          0.39665037393569946
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.00582562992349267,
+      "sample_count": 512,
+      "posterior_sha256": "bb2acc97535422aa898886ab7bb734d23ce358aa41d28c7f2db63c10bcbcfa40",
+      "checkpoint_identity": "59cf246e5b73fc21e73876cbaf9d7c31e311dee7fa06ff87db57fc7dd3e0c590"
+    },
+    {
+      "guide": {
+        "kind": "auto_fullrank",
+        "kwargs": {},
+        "implementation_id": "pyro.infer.autoguide.AutoMultivariateNormal",
+        "implementation_version": "1.9.2"
+      },
+      "seed": 43,
+      "train_seconds": 5.339805943076499,
+      "elbo_loss_first_window": 5.750024459064007,
+      "elbo_loss_last_window": 2.3071263580024244,
+      "mean_l2_error": 0.06168945133686066,
+      "covariance_frobenius_error": 0.01980568841099739,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.37140434980392456,
+          -0.3921103775501251
+        ],
+        [
+          -0.3921103775501251,
+          0.48876768350601196
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.00997898355126381,
+      "sample_count": 512,
+      "posterior_sha256": "146334107474978c19714f9af0635d32216fa8eac54d4b921d1e27e6829a16a4",
+      "checkpoint_identity": "0e8dc5e8f1a4e57c9b6ae0f0872c9f1cb0921b7a5ab424983e9740d6a23d0e45"
+    },
+    {
+      "guide": {
+        "kind": "custom:correlated_regression",
+        "kwargs": {
+          "init_scale": 0.2
+        },
+        "implementation_id": "__main__.correlated_guide#e9339c02d06f5bea2ead5b7d59a5eaa2fe576fa6c3582b2925d501523bc2506a",
+        "implementation_version": "1"
+      },
+      "seed": 43,
+      "train_seconds": 5.177518145996146,
+      "elbo_loss_first_window": 3.0163409273326396,
+      "elbo_loss_last_window": 2.2854212033748627,
+      "mean_l2_error": 0.06455254554748535,
+      "covariance_frobenius_error": 0.09461194276809692,
+      "covariance_representation": "empirical_dense",
+      "covariance": [
+        [
+          0.30974704027175903,
+          -0.3650660812854767
+        ],
+        [
+          -0.3650660812854767,
+          0.509829044342041
+        ]
+      ],
+      "predictive_epistemic_rmse": 0.01813269965350628,
+      "sample_count": 512,
+      "posterior_sha256": "9d2b6152fc00e29582346f9fd162c3b8110159f6d7905c6efc0ea4d4fd390017",
+      "checkpoint_identity": "741bb395c6f6837deb2b6bad76603a50cfb56c7d94b9c84b27d303c4a63a1dde"
+    }
+  ],
+  "max_mean_l2_error": 0.15839776396751404
+}

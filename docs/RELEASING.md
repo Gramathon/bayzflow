@@ -9,4 +9,6 @@ This document describes the required release procedure; it does not authorize pu
 5. Review release notes, security status, SBOM/provenance and limitations. Only then create an authorized signed version tag and publish the already validated artifacts without rebuilding them.
 6. Verify the published artifact hashes and installation from the release URL.
 
-Current automation validates CI and builds distributions; it does not publish a release. A local candidate is not production-ready by virtue of building successfully.
+On a green main push, CI uploads `bayzflow-candidate` and attests the wheel, sdist and runtime SBOM. After review and release authorization, use the **Publish validated release** workflow on main with the signed tag and successful main push CI run ID. Configure the GitHub `release` environment with the repository's release reviewers before dispatch. The workflow verifies that the tag is signed, the commit matches the run, and the downloaded files match the checksum manifest and attestations. It publishes those files directly.
+
+After publication, download the files into an empty directory, run `sha256sum -c SHA256SUMS`, verify their GitHub attestations, and install the wheel in a fresh environment. Record the release URL and results on Issue #1.

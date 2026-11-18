@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from typing import Any, get_type_hints
@@ -107,6 +108,12 @@ class GuideRegistry:
         unsupported = set(values) - accepted
         if unsupported:
             raise ValueError(f"unsupported arguments for {spec.kind}: {sorted(unsupported)}")
+        if spec.kind in _BUILTINS:
+            if "init_loc_fn" in values:
+                raise ValueError("init_loc_fn is not serializable")
+            scale = values.get("init_scale", 0.1)
+            if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not math.isfinite(scale) or scale <= 0:
+                raise ValueError("init_scale must be a finite positive number")
         if entry.get("validator") is not None:
             entry["validator"](values)
         if spec.kind == "auto_lowrank" and "rank" in values:
@@ -120,6 +127,8 @@ class GuideRegistry:
             expected = self._entries[name]
             if spec.implementation_version and spec.implementation_version != expected["version"]:
                 raise ValueError(f"custom guide version mismatch for {name!r}")
+            if spec.implementation_id and spec.implementation_id != expected["identity"]:
+                raise ValueError(f"custom guide implementation mismatch for {name!r}")
             return GuideSpec(spec.kind, values, expected["identity"], expected["version"])
         return GuideSpec(spec.kind, values, f"pyro.infer.autoguide.{_BUILTINS[spec.kind]}", entry["version"])
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -25,7 +25,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.0.0",
+    "torch>=2.6.0",
     "pyro-ppl>=1.9.0",
     "numpy>=1.21.0",
     "pyyaml>=5.4.0",

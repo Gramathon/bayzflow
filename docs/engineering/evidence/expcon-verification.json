@@ -1,0 +1,64 @@
+{
+  "controller": "expcon 0.2.0",
+  "run": {
+    "accelerator": "none",
+    "backend": "local",
+    "bundle_id": "965193d1d9bc429d63ac71bb4694fbeaee2e3f28cc3eb7bb1d41c33154c89529",
+    "experiment_id": "BAYZFLOW-GAUSSIAN",
+    "frozen_bundle_id": "965193d1d9bc429d63ac71bb4694fbeaee2e3f28cc3eb7bb1d41c33154c89529",
+    "kernel": null,
+    "run_id": "run-BAYZFLOW-GAUSSIAN-53f67837",
+    "status": "COMPLETED",
+    "version": "v003"
+  },
+  "contract_hash": "9662a203b60dfaff151b047a8740bcbfc57885a68b7f5e086f8a43fa5e439a2d",
+  "verification": {
+    "errors": [],
+    "evidence_id": "ev-run-BAYZFLOW-GAUSSIAN-53f67837-d86841b4a5434d7b9e14d1aa14d921d4",
+    "status": "PASS",
+    "verified": true
+  },
+  "adjudication": {
+    "execution_status": "COMPLETED",
+    "contract_status": "COMPLIANT",
+    "evidence_status": "VERIFIED",
+    "scientific_verdict": "SUPPORTED"
+  },
+  "artifacts": [
+    {
+      "id": "art-66f0d685",
+      "path": "19-auto_fullrank/meta.json",
+      "sha256": "b90e5e217b6fd7aca14fc9fcce641629fd92c40a1c04087ed545904f6f5df2f2"
+    },
+    {
+      "id": "art-b15eaf83",
+      "path": "19-auto_fullrank/posterior.pt",
+      "sha256": "3c3429fd399ec078727b434c4912aaaafa2513149237abdec4f96110df4442a6"
+    },
+    {
+      "id": "art-3ae1be66",
+      "path": "19-auto_fullrank/posterior.pt.json",
+      "sha256": "e705a60298b77de5ba8c91025b4ea96556034e8d029b9bc326638c2dc556d5fd"
+    },
+    {
+      "id": "art-82e433ff",
+      "path": "19-custom_correlated_regression/meta.json",
+      "sha256": "3d6d4ec8a7efa4f62b9927f102ae7dfddbf5e009ebec9e4a0349242bcccbcf8d"
+    },
+    {
+      "id": "art-03553c6a",
+      "path": "19-custom_correlated_regression/posterior.pt",
+      "sha256": "4bc7513274bb67dd43210e2e70b8a7a4f1464fe2dde5f9d9c15ae15cfeee7ae9"
+    },
+    {
+      "id": "art-27c8238f",
+      "path": "19-custom_correlated_regression/posterior.pt.json",
+      "sha256": "c61e32123c6d2ee5da08922302ade9affe6aab11193216ea89eb00fe1ee5655b"
+    },
+    {
+      "id": "art-056aab21",
+      "path": "metrics.json",
+      "sha256": "c7943dc4464c5c71920cd1bed26b429c079362cfac6f8e7e8f470e60407aa1d9"
+    }
+  ]
+}

@@ -8,12 +8,12 @@ import shutil
 import sys
 from pathlib import Path
 
-import pyro
-import torch
 import yaml
 
 from bayzflow import __version__
-from bayzflow.guides import GuideSpec, default_registry
+from bayzflow.guides import GuideSpec
+from bayzflow.mcp.service import BayzflowService
+from bayzflow.mcp.workloads import REGRESSION, regression_model
 
 
 def _skill_root() -> Path:
@@ -35,13 +35,6 @@ def _json(data) -> None:
     print(json.dumps(data, indent=2, sort_keys=True, default=str))
 
 
-def _guide_schema(kind: str):
-    for row in default_registry.list():
-        if row["kind"] == kind:
-            return row
-    raise ValueError(f"unknown or unregistered guide: {kind}")
-
-
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bayzflow")
     parser.add_argument("--version", action="version", version=__version__)
@@ -53,29 +46,33 @@ def main(argv=None) -> int:
     inspect_parser.add_argument("kind")
     validate_parser = guides.add_parser("validate")
     validate_parser.add_argument("path")
+    models = sub.add_parser("model").add_subparsers(dest="model_command", required=True)
+    models.add_parser("inspect").add_argument("model_id", nargs="?", default="regression")
     skill = sub.add_parser("skill").add_subparsers(dest="skill_command", required=True)
     skill.add_parser("status")
     skill_install = skill.add_parser("install")
     skill_install.add_argument("--target")
     args = parser.parse_args(argv)
 
+    service = BayzflowService()
     if args.command == "doctor":
-        _json({"version": __version__, "python": sys.version.split()[0], "torch": torch.__version__,
-               "pyro": pyro.__version__, "cuda_available": torch.cuda.is_available(),
-               "mcp_extra": _module_available("mcp")})
+        _json({**service.doctor(), "python": sys.version.split()[0], "mcp_extra": _module_available("mcp")})
+    elif args.command == "model":
+        service.register_model("regression", regression_model(), REGRESSION)
+        _json(service.model_inspect(args.model_id))
     elif args.command == "guide":
         if args.guide_command == "list":
-            _json(default_registry.list())
+            _json(service.guide_list())
         elif args.guide_command == "inspect":
-            _json(_guide_schema(args.kind))
+            _json(service.guide_schema(args.kind))
         else:
             path = Path(args.path)
             with path.open(encoding="utf-8") as stream:
                 value = yaml.safe_load(stream)
             if not isinstance(value, dict):
                 raise ValueError("guide YAML must contain an object with kind and optional kwargs")
-            spec = default_registry.validate(GuideSpec.from_dict(value))
-            _json({"valid": True, "guide": spec.to_dict(), "identity": spec.identity})
+            spec = GuideSpec.from_dict(value)
+            _json(service.guide_validate(spec.kind, dict(spec.kwargs)))
     elif args.command == "skill":
         root = _skill_root()
         if args.skill_command == "status":

@@ -191,3 +191,43 @@ def test_preexisting_pyro_model_trains_without_double_wrapping():
                        num_epochs=1)
     assert isinstance(bf.guide, nn.Module)
     assert torch.isfinite(bf.predict((x[:3], y[:3]), predict_fn, num_samples=2)["mean"]).all()
+
+
+@pytest.mark.parametrize(("kind", "representation"), [
+    ("auto_diag", "diagonal"),
+    ("auto_lowrank", "diagonal_plus_factor_product"),
+    ("auto_fullrank", "cholesky"),
+    ("auto_normal", "unavailable"),
+])
+def test_parameter_and_covariance_representations(kind, representation, tmp_path):
+    from bayzflow.mcp.workloads import (
+        regression_batch,
+        regression_loss,
+        regression_model,
+        regression_predict,
+    )
+
+    batch = regression_batch()
+    kwargs = {"rank": 1} if kind == "auto_lowrank" else {}
+    flow = BayzFlow(regression_model(), guide=kind, guide_kwargs=kwargs)
+    flow.selected_module_names = ["0"]
+    flow.build_bayesian_model()
+    flow.train_posterior(DataLoader(TensorDataset(*batch), batch_size=len(batch[0])),
+                         regression_loss, regression_predict, num_epochs=1, save_dir=str(tmp_path))
+    assert flow.posterior_parameters()
+    assert flow.posterior_covariance(batch)["representation"] == representation
+    if kind == "auto_lowrank":
+        native = flow.posterior_covariance(batch)
+        assert native["factor"].shape == (2, 1)
+        assert torch.all(native["diagonal"] > 0)
+
+
+def test_convolutions_have_distinct_posterior_sites():
+    model = nn.Sequential(nn.Conv1d(1, 1, 2), nn.Conv1d(1, 1, 2))
+    flow = BayzFlow(model, guide="auto_diag")
+    flow.selected_module_names = ["0", "1"]
+    flow.build_bayesian_model()
+    batch = torch.ones((3, 1, 5)), torch.zeros((3, 1, 3))
+    flow.train_posterior(DataLoader(TensorDataset(*batch), batch_size=3), _loss, _callbacks,
+                         num_epochs=1)
+    assert set(flow.posterior_samples(batch, 3)) >= {"0.weight", "1.weight", "0.bias", "1.bias"}
