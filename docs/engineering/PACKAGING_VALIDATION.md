@@ -14,8 +14,8 @@ Artifacts:
 
 | File | SHA256 |
 |---|---|
-| `bayzflow-0.2.0.tar.gz` | `ecdf87e5e46763ddd930dbc6f3cad393c7d56e7c20e3e4bf2c798955bea10747` |
-| `bayzflow-0.2.0-py3-none-any.whl` | `e0e23adf60b17236c04d6a1f1bdafa44547d9054d1593a9a5f993b9cf4222aa7` |
+| `bayzflow-0.2.0.tar.gz` | `8ff15116731a2ee3a958d74a255dade81bd42622723b15fd75d8f1532143686b` |
+| `bayzflow-0.2.0-py3-none-any.whl` | `82ee585b85b9d50420cbf5e4a13bc0a223aa1a36ed630c9323134a480c81e23c` |
 
 ## Installed-wheel checks
 

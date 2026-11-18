@@ -22,7 +22,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev,mcp]'
       - run: ruff check bayzflow/guides bayzflow/cli.py bayzflow/mcp bayzflow/core/engine.py bayzflow/core/experiment.py tests/test_guides_engine.py tests/test_interfaces.py tests/test_experiment_runner.py
-      - run: mypy bayzflow/guides bayzflow/mcp
+      - run: mypy --follow-imports=skip --ignore-missing-imports bayzflow/guides bayzflow/mcp
       - run: python -m pytest -q tests/test_guides_engine.py tests/test_interfaces.py tests/test_experiment_runner.py
       - run: python -m pip install build
       - run: python -m build

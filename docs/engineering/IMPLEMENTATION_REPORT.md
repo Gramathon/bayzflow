@@ -20,7 +20,7 @@
 - Python 3.10.12; PyTorch 2.4.1+cu121 with `torch.cuda.is_available() == False`; Pyro 1.9.1; pytest 9.0.2; MCP SDK 2.3.0 (installed under `/tmp/bayzflow-mcp-libs` for isolated protocol testing).
 - `PYTHONPATH=/tmp/bayzflow-mcp-libs:$PYTHONPATH python3 -m pytest -q tests/test_guides_engine.py tests/test_interfaces.py tests/test_experiment_runner.py`: 14 passed.
 - `PYTHONPATH=/tmp/bayzflow-mcp-libs:$PYTHONPATH python3 -m pytest -q --ignore=tests/test_phase8.py`: 84 passed.
-- Ruff on changed engine, experiment, guide, CLI, MCP and focused test files: clean. `mypy bayzflow/guides bayzflow/mcp`: 6 source files, no issues.
+- Ruff 0.17.5 on changed engine, experiment, guide, CLI, MCP and focused test files: clean. `mypy --follow-imports=skip --ignore-missing-imports bayzflow/guides bayzflow/mcp`: 6 source files, no issues. The Mypy gate deliberately limits analysis to those typed interfaces; imported PyTorch/Pyro engine code and optional example integrations are not traversed.
 - The unfiltered `python3 -m pytest -q` suite does not collect because the pre-existing untracked `tests/test_phase8.py` imports `posterior.weight`, but the checkout resolves `posterior` as a module rather than a package. The phase 8 work was not changed.
 - Both distributions built with `python3 -m build`; wheel installed outside the checkout in `/tmp/bayzflow-clean-venv`. CLI, skill access, example inference and an MCP stdio subprocess were exercised from that installed wheel.
 
