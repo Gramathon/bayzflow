@@ -1,0 +1,47 @@
+schema_version: 1
+bundle_identity_algorithm: expcon-bundle-v3
+experiment:
+  id: BAYZFLOW-GAUSSIAN
+  version: v001
+  title: Bayzflow posterior recovery in Gaussian regression
+hypothesis:
+  statement: The configured full rank and custom guides recover the exact posterior mean to L2 error within 0.35 on this fixture.
+source:
+  repository: .
+  dirty_tree_allowed: false
+execution:
+  allowed_backends: [local]
+  accelerator: {type: cpu}
+  source:
+    entrypoint: scripts/run.py
+    include: [scripts/run.py]
+  stages:
+    - id: infer
+      entrypoint: scripts/run.py
+  invocation:
+    argv: [--contract, '${contract.path}', --output-root, '${outputs.root}']
+environment:
+  python: '3.12'
+  dependency_lock: uv.lock
+evaluation:
+  primary_metric: max_mean_l2_error
+  acceptance:
+    all:
+      - {metric: max_mean_l2_error, operator: '<=', threshold: 0.35}
+outputs:
+  required:
+    - metrics.json
+    - 19-auto_fullrank/meta.json
+    - 19-auto_fullrank/posterior.pt
+    - 19-auto_fullrank/posterior.pt.json
+    - 19-custom_correlated_regression/meta.json
+    - 19-custom_correlated_regression/posterior.pt
+    - 19-custom_correlated_regression/posterior.pt.json
+reproducibility:
+  level: seeded
+  seed: 19
+scientific_parameters:
+  seed: 19
+  guides: [auto_fullrank, 'custom:correlated_regression']
+  steps: 1800
+  samples: 512
