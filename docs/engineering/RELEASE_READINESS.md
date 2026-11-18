@@ -10,7 +10,7 @@ Candidate validation covers CPU inference, all five guides, clean wheel installa
 | EXPCON handoff | Verified frozen run with a passing preregistered threshold |
 | Packaging | Wheel and sdist, strict metadata check, skill installation, SHA256 manifest and runtime SBOM |
 | CI and security | Review the checks for the current [draft PR](https://github.com/Gramathon/bayzflow/pull/2), including the installed CPU matrix and security gates |
-| Release | Requires review, source attestation on main, a signed authorized tag, publication of the recorded CI artifacts, and installation from the GitHub Release |
+| Release | Requires review, source attestation on main, an authorized tag on a GitHub verified commit, publication of the recorded CI artifacts, and installation from the GitHub Release |
 
 The Pi interpretation attempt hit missing provider credentials. GPU and HTTP operations are outside the validated scope. Older tracked research runs and separate user files in the original checkout are outside the production test suite for this PR.
 
