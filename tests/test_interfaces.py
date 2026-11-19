@@ -31,7 +31,7 @@ def test_cli_guides_doctor_and_skill_install(tmp_path, capsys):
     assert {row["kind"] for row in guides} >= {"auto_normal", "auto_diag", "auto_lowrank", "auto_fullrank"}
 
     assert main(["doctor"]) == 0
-    assert json.loads(capsys.readouterr().out)["version"] == "0.2.0"
+    assert json.loads(capsys.readouterr().out)["version"] == "0.2.1"
 
     destination = tmp_path / "skills" / "bayesian-inference"
     assert main(["skill", "install", "--target", str(destination)]) == 0

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 - Document installation from GitHub Releases and test the complete README example.
 - Reject non-null `create_plates` in built-in guide specifications and normalize integer `init_scale` values for Pyro.
