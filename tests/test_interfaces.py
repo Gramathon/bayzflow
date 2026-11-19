@@ -1,10 +1,28 @@
 import json
+import re
+import runpy
+from pathlib import Path
 
 import pytest
+import torch
 from torch import nn
 
 from bayzflow.cli import main
 from bayzflow.mcp.service import BayzflowService
+
+
+def test_readme_quickstart_runs_verbatim(tmp_path, monkeypatch):
+    readme = Path(__file__).resolve().parents[1] / "README.md"
+    quickstart = readme.read_text(encoding="utf-8").split("## Quickstart", 1)[1]
+    snippet = re.search(r"```python\n(.*?)```", quickstart, re.DOTALL)
+    assert snippet is not None
+    monkeypatch.chdir(tmp_path)
+    script = tmp_path / "quickstart.py"
+    script.write_text(snippet[1], encoding="utf-8")
+    scope = runpy.run_path(str(script))
+    assert scope["manifest"]["random_seed"] == 17
+    assert scope["reloaded"]["logits"].shape == (32, 4, 1)
+    assert torch.isfinite(scope["reloaded"]["logits"]).all()
 
 
 def test_cli_guides_doctor_and_skill_install(tmp_path, capsys):
@@ -46,6 +64,11 @@ def test_mcp_protocol_in_memory():
             assert {"bayzflow_doctor", "guide_list", "guide_validate", "model_list"} <= names
             response = await client.call_tool("guide_validate", {"kind": "auto_lowrank", "kwargs": {"rank": 2}})
             assert not response.is_error
+            invalid = await client.call_tool(
+                "guide_validate",
+                {"kind": "auto_normal", "kwargs": {"create_plates": "plain text"}},
+            )
+            assert invalid.is_error
 
     import anyio
 

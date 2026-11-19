@@ -2,6 +2,16 @@
 
 Install the `mcp` extra. Configure the client to run `bayzflow-mcp --stdio --demo --workspace /operator/approved/private-directory`. The server starts with discovery only if the operator omits the workspace. With `--demo`, it registers the bundled Gaussian regression workload, which uses a fixed dataset and likelihood. The console entry point accepts no client input paths. Connect using the official MCP SDK stdio transport.
 
+To connect Pi 1.5.2, run this from the shell where you installed Bayzflow:
+
+```bash
+pi mcp add bayzflow --exposure direct -- "$(command -v bayzflow-mcp)" \
+  --stdio --demo --workspace "$HOME/.local/state/bayzflow-demo"
+pi mcp list --json
+```
+
+The listing should show `state: connected` and the discovered tools.
+
 A trusted Python host can create `BayzflowService(workspace=JobStore(workspace, Limits(...)))`, register a Torch model and a `Workload(version, batch, predict, loss)`, and start `create_server(service).run(transport="stdio")`. Register custom guide factories on the service's guide registry. The model, workload callbacks and custom guide registrations must be importable by a spawned worker. Bump the workload version whenever its data, callbacks or other scientific inputs change.
 
 1. Discover registrations and select exact layer names. Call `bayesian_plan` to check model size, parameter count, selected latent dimension, and guide sizing. This tool performs no training.

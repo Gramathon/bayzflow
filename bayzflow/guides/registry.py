@@ -16,6 +16,7 @@ from typing import Any, get_type_hints
 import pyro
 from pyro.infer import autoguide
 
+from ._fullrank import MAX_FULLRANK_LATENTS, BoundedFullRankGuide
 from .specifications import GuideSpec
 
 
@@ -111,17 +112,19 @@ class GuideRegistry:
         if spec.kind in _BUILTINS:
             if "init_loc_fn" in values:
                 raise ValueError("init_loc_fn is not serializable")
+            if values.get("create_plates") is not None:
+                raise ValueError("create_plates must be null in a serialized guide specification")
             scale = values.get("init_scale", 0.1)
             if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not math.isfinite(scale) or scale <= 0:
                 raise ValueError("init_scale must be a finite positive number")
+            if "init_scale" in values:
+                values["init_scale"] = float(scale)
         if entry.get("validator") is not None:
             entry["validator"](values)
         if spec.kind == "auto_lowrank" and "rank" in values:
             rank = values["rank"]
             if isinstance(rank, bool) or not isinstance(rank, int) or rank < 1:
                 raise ValueError("auto_lowrank rank must be a positive integer")
-        if spec.kind == "auto_fullrank" and values.get("max_dimension") is not None:
-            raise ValueError("max_dimension is a planning limit, not an AutoMultivariateNormal argument")
         if spec.kind.startswith("custom:"):
             name = spec.kind.partition(":")[2]
             expected = self._entries[name]
@@ -138,7 +141,8 @@ class GuideRegistry:
         compatibility = entry.get("compatibility")
         if compatibility is not None and not compatibility(model):
             raise ValueError(f"guide {valid.kind!r} is incompatible with the supplied model")
-        guide = entry["factory"](model, **dict(valid.kwargs))
+        factory = BoundedFullRankGuide if valid.kind == "auto_fullrank" else entry["factory"]
+        guide = factory(model, **dict(valid.kwargs))
         if not callable(guide):
             raise TypeError(f"guide factory for {valid.kind!r} did not return a callable Pyro guide")
         return guide
@@ -151,10 +155,14 @@ class GuideRegistry:
                 "kind": kind,
                 "implementation": f"pyro.infer.autoguide.{class_name}",
                 "version": pyro.__version__,
-                "kwargs": _accepted_kwargs(cls),
+                "kwargs": [
+                    name for name in _accepted_kwargs(cls) if name not in {"init_loc_fn", "create_plates"}
+                ],
             }
             if kind == "auto_lowrank":
                 row["defaults"] = {"rank": 20}
+            if kind == "auto_fullrank":
+                row["max_latent_dimension"] = MAX_FULLRANK_LATENTS
             rows.append(row)
         for name, entry in sorted(self._entries.items()):
             rows.append({"kind": f"custom:{name}", "implementation": entry["identity"],

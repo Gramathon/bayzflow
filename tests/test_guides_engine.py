@@ -2,8 +2,11 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+import pyro
+import pyro.distributions as dist
 import pytest
 import torch
+from pyro.infer.autoguide import AutoMultivariateNormal
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -24,10 +27,74 @@ def test_guide_spec_round_trip_and_identity():
 def test_builtins_validate_constructor_arguments():
     for name in ("auto_normal", "auto_diag", "auto_lowrank", "auto_fullrank"):
         assert default_registry.validate(GuideSpec(name))
+        guide = default_registry.create(lambda: None, GuideSpec(name, {"init_scale": 1}))
+        assert guide is not None
     with pytest.raises(ValueError, match="unsupported arguments"):
         default_registry.validate(GuideSpec("auto_diag", {"rank": 3}))
     with pytest.raises(ValueError, match="positive integer"):
         default_registry.validate(GuideSpec("auto_lowrank", {"rank": 0}))
+
+
+@pytest.mark.parametrize("value", ["plain text", [], {}, 1, True])
+def test_auto_normal_rejects_non_null_create_plates(value):
+    with pytest.raises(ValueError, match="create_plates must be null"):
+        default_registry.validate("auto_normal", {"create_plates": value})
+
+
+def test_auto_normal_allows_null_create_plates():
+    guide = default_registry.create(lambda: None, "auto_normal", {"create_plates": None})
+    assert guide.create_plates is None
+
+
+def test_python_setup_rejects_fullrank_for_wide_bayesian_layer():
+    model = nn.Sequential(nn.Linear(512, 1))
+    flow = BayzFlow(model, guide="auto_fullrank")
+    flow.selected_module_names = ["0"]
+    flow.build_bayesian_model()
+    with pytest.raises(ValueError, match="at most 512 latent coordinates; found 513"):
+        flow.setup_svi(loss_from_logits_fn=_loss, predict_fn=_callbacks)
+    assert flow.guide is None
+    assert flow.svi is None
+
+
+def test_fullrank_checks_native_pyro_latents_before_covariance_allocation():
+    def model():
+        for site in ("first", "second"):
+            pyro.sample(site, dist.Normal(torch.zeros(257), torch.ones(257)).to_event(1))
+
+    guide = default_registry.create(model, "auto_fullrank")
+    for _ in range(2):
+        with pytest.raises(ValueError, match="at most 512 latent coordinates; found 514"):
+            guide()
+        assert not hasattr(guide, "scale_tril")
+
+
+def test_fullrank_loads_checkpoints_with_the_original_pyro_parameter_names(tmp_path, monkeypatch):
+    def make_flow():
+        flow = BayzFlow(_TinyModel(), guide="auto_fullrank")
+        flow.selected_module_names = ["linear"]
+        flow.build_bayesian_model()
+        return flow
+
+    loader = _data()
+    batch = next(iter(loader))
+    with monkeypatch.context() as patch:
+        patch.setattr("bayzflow.guides.registry.BoundedFullRankGuide", AutoMultivariateNormal)
+        original = make_flow()
+        original.train_posterior(loader, _loss, _callbacks, num_epochs=1, save_dir=str(tmp_path))
+        expected = original.posterior_covariance(batch)["cholesky"]
+
+    restored = make_flow()
+    restored.load_posterior(str(tmp_path), _loss, _callbacks)
+    assert torch.equal(restored.posterior_covariance(batch)["cholesky"], expected)
+
+
+def test_sample_artifact_writer_requires_named_tensors(tmp_path):
+    flow = BayzFlow(_TinyModel())
+    output = tmp_path / "bad.pt"
+    with pytest.raises(ValueError, match="mapping of site names to tensors"):
+        flow.save_posterior_samples(torch.zeros(3, 2), str(output))
+    assert not output.exists()
 
 
 def test_unsupported_module_types_are_not_candidates_and_fail_closed():

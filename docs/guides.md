@@ -11,6 +11,10 @@ engine = BayzFlow(model, guide=GuideSpec("auto_lowrank", {"rank": 8}))
 
 The built-in identifiers map to Pyro `AutoNormal`, `AutoDiagonalNormal`, `AutoLowRankMultivariateNormal`, and `AutoMultivariateNormal`. Constructor keyword names are checked against the installed Pyro classes. `auto_lowrank` retains the legacy explicit rank 20 default; configure `rank` for a smaller latent model. The engine preserves `guide_kind="low_rank"` and `guide_kind="mean_field"` aliases for existing callers.
 
+`auto_fullrank` supports up to 512 unconstrained latent coordinates. Python checks the selected Bayesian layers and then the actual Pyro trace before allocating the dense covariance factor. MCP checks its separate model and parameter budgets during planning. For larger latent spaces, select fewer layers or use `auto_lowrank` or `auto_diag`. The guide limit preserves the Pyro parameter names used in existing full rank checkpoints.
+
+Pass declarative settings such as `init_scale` and `rank` in `GuideSpec`. Callback settings such as `init_loc_fn` and a non-null `create_plates` belong in trusted Python guide factories.
+
 Trusted application code may register a real Pyro guide factory:
 
 ```python

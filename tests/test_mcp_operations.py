@@ -5,6 +5,7 @@ import os
 import sys
 
 import pytest
+from torch import nn
 
 from bayzflow.mcp.jobs import JobStore, Limits
 from bayzflow.mcp.service import BayzflowService
@@ -21,6 +22,19 @@ def test_workspace_and_admission(tmp_path):
     link.symlink_to(workspace, target_is_directory=True)
     with pytest.raises(ValueError, match="symlink"):
         JobStore(link, Limits())
+
+
+def test_fullrank_and_guide_configuration_are_checked_at_admission(tmp_path):
+    service = BayzflowService(workspace=JobStore(tmp_path / "workspace", Limits()))
+    service.register_model("wide", nn.Sequential(nn.Linear(512, 1)), REGRESSION)
+    with pytest.raises(ValueError, match="at most 512 latent coordinates; found 513"):
+        service.bayesian_plan("wide", ["0"], "auto_fullrank", {}, 1, 0, 1, 0.01)
+
+    service.register_model("regression", regression_model(), REGRESSION)
+    with pytest.raises(ValueError, match="create_plates must be null"):
+        service.bayesian_plan(
+            "regression", ["0"], "auto_normal", {"create_plates": "plain text"}, 1, 0, 1, 0.01
+        )
 
 
 def test_mcp_stdio_inference(tmp_path):
