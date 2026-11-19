@@ -13,6 +13,14 @@ Run `bayzflow doctor` and `bayzflow guide list`. Inspect a guide with `bayzflow 
 
 For the demo on Linux, configure the MCP client to launch `bayzflow-mcp --stdio --demo --workspace <private-operator-directory>`. Use `model_list`, `layer_candidates`, `guide_list` and `guide_validate`. Send a `bayesian_plan` for an approved model. Review the resource limits and send the unchanged request and plan ID to `posterior_fit` with an idempotency key. Poll `job_status` and use the successful fit ID for `posterior_sample`, `measure_epistemic` or `measure_layers`. Use `artifact_list` and `artifact_read` to obtain bounded pages and verify their SHA256. `job_cancel` requests cancellation. Do not retry a failed run with changed scientific settings unless the experiment permits it.
 
+For Pi 1.5.2, register the installed stdio server and verify the connection:
+
+```bash
+pi mcp add bayzflow --exposure direct -- "$(command -v bayzflow-mcp)" \
+  --stdio --demo --workspace "$HOME/.local/state/bayzflow-demo"
+pi mcp list --json
+```
+
 Use the Python API with a trusted model and data loader:
 
 ```python

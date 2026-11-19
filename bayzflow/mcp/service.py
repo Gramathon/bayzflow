@@ -14,6 +14,7 @@ import torch
 from bayzflow import __version__
 from bayzflow.core.engine import find_candidate_modules
 from bayzflow.guides import GuideSpec
+from bayzflow.guides._fullrank import check_fullrank_dimension
 from bayzflow.guides.registry import GuideRegistry, default_registry
 
 from .jobs import PUBLIC_ID, JobStore, fingerprint
@@ -159,8 +160,8 @@ class BayzflowService:
         if kind == "auto_lowrank" and "rank" not in kwargs:
             kwargs = {**kwargs, "rank": min(20, latent_dimension)}
         guide = self.guide_registry.validate(GuideSpec(kind, kwargs))
-        if kind == "auto_fullrank" and latent_dimension > 512:
-            raise ValueError("full rank guide requires at most 512 latent coordinates")
+        if kind == "auto_fullrank":
+            check_fullrank_dimension(latent_dimension)
         if kind == "auto_lowrank" and guide.kwargs["rank"] > min(512, latent_dimension):
             raise ValueError("guide rank exceeds the admitted latent dimension")
         guide_parameters = 2 * latent_dimension

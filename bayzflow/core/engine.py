@@ -40,6 +40,7 @@ from torch.distributions import constraints as torch_constraints
 
 from bayzflow._version import __version__ as _VERSION
 from bayzflow.guides import GuideSpec, default_registry
+from bayzflow.guides._fullrank import check_fullrank_dimension
 
 _PYRO_STORE_LOCK = threading.RLock()
 
@@ -769,7 +770,6 @@ class BayzFlow:
 
             return logits
 
-        self._pyro_model = pyro_model
         selected = guide if guide is not None else self.guide_spec
         if guide_kind is not None:
             # Preserve the original public spellings while making GuideSpec canonical.
@@ -790,8 +790,19 @@ class BayzFlow:
                 selected = GuideSpec(selected.kind, guide_kwargs)
             else:
                 selected = GuideSpec(selected, guide_kwargs)
-        self.guide_spec = self.guide_registry.validate(selected)
-        self.guide = self.guide_registry.create(self._pyro_model, self.guide_spec)
+        spec = self.guide_registry.validate(selected)
+        if spec.kind == "auto_fullrank":
+            wrapped_coordinates = sum(
+                loc.numel()
+                for module in model.modules()
+                if isinstance(module, _BAYES_TYPES)
+                for loc in (module._weight_loc, module._bias_loc)
+                if loc is not None
+            )
+            check_fullrank_dimension(wrapped_coordinates)
+        self.guide = self.guide_registry.create(pyro_model, spec)
+        self.guide_spec = spec
+        self._pyro_model = pyro_model
         self.optimizer = pyro.optim.Adam({"lr": lr})
         self.svi = SVI(self._pyro_model, self.guide, self.optimizer, loss=Trace_ELBO())
 
@@ -978,8 +989,14 @@ class BayzFlow:
         max_artifact_bytes: int = 128 * 1024 * 1024,
     ) -> dict[str, Any]:
         """Write bounded tensor-only posterior samples and a checksum manifest."""
-        if not samples or any(not isinstance(name, str) or not torch.is_tensor(value)
-                              for name, value in samples.items()):
+        if (
+            not isinstance(samples, Mapping)
+            or not samples
+            or any(
+                not isinstance(name, str) or not torch.is_tensor(value)
+                for name, value in samples.items()
+            )
+        ):
             raise ValueError("samples must be a non-empty mapping of site names to tensors")
         tensors = {name: value.detach().cpu().contiguous() for name, value in samples.items()}
         total_bytes = sum(value.numel() * value.element_size() for value in tensors.values())

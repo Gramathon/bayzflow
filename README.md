@@ -6,38 +6,77 @@ The project remains research software. Layer replacement, prior calibration and 
 
 ## Install
 
-Python 3.10 or newer is required. Install the core package with:
+Python 3.10 or newer is required. Install the wheel from the [GitHub release](https://github.com/Gramathon/bayzflow/releases/tag/v0.2.0):
 
 ```bash
-python -m pip install bayzflow
+python -m pip install "https://github.com/Gramathon/bayzflow/releases/download/v0.2.0/bayzflow-0.2.0-py3-none-any.whl"
 ```
 
-Optional dependencies are separate: `bayzflow[fx]`, `bayzflow[medical]`, `bayzflow[viz]`, `bayzflow[mcp]`, and `bayzflow[dev]`.
+To include MCP, install the same release wheel with the `mcp` extra:
+
+```bash
+python -m pip install "bayzflow[mcp] @ https://github.com/Gramathon/bayzflow/releases/download/v0.2.0/bayzflow-0.2.0-py3-none-any.whl"
+```
+
+See [INSTALL.md](INSTALL.md) for the other extras.
 
 ## Quickstart
 
+Fit a variational guide to a small regression model and save its posterior predictive samples:
+
 ```python
+import pyro
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+
 from bayzflow import BayzFlow
+
+seed = 17
+pyro.set_rng_seed(seed)
+model = nn.Sequential()
+model.add_module("head", nn.Linear(2, 1))
+x = torch.linspace(-1, 1, 16).reshape(8, 2)
+y = x[:, :1] + 0.2
+loader = DataLoader([{"x": row, "y": target} for row, target in zip(x, y)], batch_size=4)
+batch = next(iter(loader))
+
+
+def predict(model, batch):
+    return model(batch["x"])
+
+
+def loss(logits, batch):
+    return nn.functional.mse_loss(logits, batch["y"])
+
 
 bf = BayzFlow.from_model_and_data(
     model=model,
-    calib_loader=calibration_loader,
-    calib_forward_fn=lambda m, batch: m(batch["x"]),
+    calib_loader=loader,
+    calib_forward_fn=predict,
     bayes_patterns=["head"],
     guide="auto_lowrank",
-    guide_kwargs={"rank": 8},
+    guide_kwargs={"rank": 2},
 )
 bf.train_posterior(
-    train_loader=train_loader,
-    loss_from_logits_fn=lambda logits, batch: loss(logits, batch["y"]),
-    predict_fn=lambda m, batch: m(batch["x"]),
+    train_loader=loader,
+    loss_from_logits_fn=loss,
+    predict_fn=predict,
     num_epochs=10,
+    seed=seed,
     save_dir="artifacts/posterior",
 )
-result = bf.predict(batch, predict_fn=lambda m, b: m(b["x"]), num_samples=32,
-                    return_samples=True)
-manifest = bf.save_posterior_samples(result["samples"], "artifacts/predictive-samples.pt",
-                                     random_seed=17)
+
+pyro.set_rng_seed(seed)
+result = bf.predict(batch, predict_fn=predict, num_samples=32, return_samples=True)
+manifest = bf.save_posterior_samples(
+    {"logits": result["samples"]},
+    "artifacts/predictive-samples.pt",
+    random_seed=seed,
+)
+reloaded = BayzFlow.load_posterior_sample_artifact("artifacts/predictive-samples.pt.json")
+assert torch.equal(reloaded["logits"], result["samples"])
+print(reloaded["logits"].shape)
 ```
 
 Candidate layer wrappers currently cover Linear, Conv1d/2d/3d, and ConvTranspose3d modules. Normalization, ConvTranspose1d/2d and arbitrary composite modules are not candidates. Inspect candidates and verify model behavior on a small dataset before scaling an inference run.
@@ -52,7 +91,7 @@ Custom Pyro guide factories are registered by trusted Python code through `Guide
 
 `bayzflow --version`, `bayzflow doctor`, `bayzflow guide list`, `bayzflow guide inspect auto_lowrank`, and `bayzflow guide validate guide.yaml` provide diagnostics and guide discovery. The packaged skill is available through `bayzflow skill status` and `bayzflow skill install`.
 
-Install `bayzflow[mcp]` and configure your MCP client to launch the following local stdio command on Linux:
+Install the GitHub Release wheel with the `mcp` extra and configure your MCP client to launch the following local stdio command on Linux:
 
 ```bash
 bayzflow-mcp --stdio --demo --workspace ~/.local/state/bayzflow-demo
@@ -77,13 +116,8 @@ EXPCON owns experiment definition, freezing, execution admission, evidence colle
 
 ## Release status
 
-Version 0.2.0 is a release candidate. See [release readiness](docs/engineering/RELEASE_READINESS.md) for verified evidence and publication gates.
+Version 0.2.0 is available as an [immutable GitHub release](https://github.com/Gramathon/bayzflow/releases/tag/v0.2.0). Its validation covers Linux CPU inference and MCP over stdio. See [release readiness](docs/engineering/RELEASE_READINESS.md) for the evidence and scope.
 
 ## Development
-
-```bash
-python -m pip install -e '.[dev]'
-python -m pytest
-```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [docs/RELEASING.md](docs/RELEASING.md).

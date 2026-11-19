@@ -32,14 +32,14 @@ jobs:
         run: |
           uv venv --python "$(command -v python)" "$RUNNER_TEMP/installed"
           uv pip install --python "$RUNNER_TEMP/installed/bin/python" --index https://download.pytorch.org/whl/cpu 'torch>=2.6.0'
-          uv pip install --python "$RUNNER_TEMP/installed/bin/python" 'dist/bayzflow-0.2.0-py3-none-any.whl[mcp]' pytest 'setuptools>=78.1.1'
+          uv pip install --python "$RUNNER_TEMP/installed/bin/python" 'dist/bayzflow-0.2.1-py3-none-any.whl[mcp]' pytest 'setuptools>=78.1.1'
           uv pip check --python "$RUNNER_TEMP/installed/bin/python"
       - name: Test installed package outside the checkout
         working-directory: ${{ runner.temp }}
         run: |
           bin="$RUNNER_TEMP/installed/bin"
           "$bin/python" -c 'import bayzflow, pathlib, sys; assert pathlib.Path(bayzflow.__file__).is_relative_to(sys.prefix)'
-          "$bin/bayzflow" --version | grep -Fx 0.2.0
+          "$bin/bayzflow" --version | grep -Fx 0.2.1
           "$bin/bayzflow" doctor
           "$bin/bayzflow" guide list
           "$bin/bayzflow" skill status
