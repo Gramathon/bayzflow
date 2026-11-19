@@ -1,0 +1,223 @@
+FFFFF.FFFFF                                                              [100%]
+=================================== FAILURES ===================================
+_____ test_continuation_matches_uninterrupted_and_preserves_store_identity _____
+
+    def test_continuation_matches_uninterrupted_and_preserves_store_identity():
+>       a, batch = make_engine(); b, _ = make_engine()
+                   ^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:26:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+___________________ test_training_policy_and_updates[freeze] ___________________
+
+policy = 'freeze'
+
+    @pytest.mark.parametrize('policy', ['freeze', 'joint'])
+    def test_training_policy_and_updates(policy):
+>       bf, batch = make_engine(policy)
+                    ^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:39:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'freeze', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+___________________ test_training_policy_and_updates[joint] ____________________
+
+policy = 'joint'
+
+    @pytest.mark.parametrize('policy', ['freeze', 'joint'])
+    def test_training_policy_and_updates(policy):
+>       bf, batch = make_engine(policy)
+                    ^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:39:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+_______________________ test_explicit_reset_and_restart ________________________
+
+    def test_explicit_reset_and_restart():
+>       bf, batch = make_engine(); bf.fit([batch], num_epochs=3)
+                    ^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:51:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+______________ test_summary_preserves_precision_and_matrix_shape _______________
+
+    def test_summary_preserves_precision_and_matrix_shape():
+>       bf, _ = make_engine()
+                ^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:62:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+_____________ test_native_guide_moments_and_sampling[auto_normal] ______________
+
+kind = 'auto_normal'
+
+    @pytest.mark.parametrize('kind', ['auto_normal', 'auto_diag', 'auto_lowrank', 'auto_fullrank'])
+    def test_native_guide_moments_and_sampling(kind):
+>       bf, batch = make_engine(kind=kind); bf.fit([batch], num_epochs=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:85:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_normal'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+______________ test_native_guide_moments_and_sampling[auto_diag] _______________
+
+kind = 'auto_diag'
+
+    @pytest.mark.parametrize('kind', ['auto_normal', 'auto_diag', 'auto_lowrank', 'auto_fullrank'])
+    def test_native_guide_moments_and_sampling(kind):
+>       bf, batch = make_engine(kind=kind); bf.fit([batch], num_epochs=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:85:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+_____________ test_native_guide_moments_and_sampling[auto_lowrank] _____________
+
+kind = 'auto_lowrank'
+
+    @pytest.mark.parametrize('kind', ['auto_normal', 'auto_diag', 'auto_lowrank', 'auto_fullrank'])
+    def test_native_guide_moments_and_sampling(kind):
+>       bf, batch = make_engine(kind=kind); bf.fit([batch], num_epochs=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:85:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_lowrank'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+____________ test_native_guide_moments_and_sampling[auto_fullrank] _____________
+
+kind = 'auto_fullrank'
+
+    @pytest.mark.parametrize('kind', ['auto_normal', 'auto_diag', 'auto_lowrank', 'auto_fullrank'])
+    def test_native_guide_moments_and_sampling(kind):
+>       bf, batch = make_engine(kind=kind); bf.fit([batch], num_epochs=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:85:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_fullrank'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+__________________ test_external_store_identity_is_preserved ___________________
+
+    def test_external_store_identity_is_preserved():
+        pyro.clear_param_store(); external = pyro.param('external', torch.tensor(1.))
+>       bf, batch = make_engine(); bf.fit([batch], num_epochs=1)
+                    ^^^^^^^^^^^^^
+
+tests/test_svi_integrity.py:102:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+policy = 'joint', kind = 'auto_diag'
+
+    def make_engine(policy='joint', kind='auto_diag'):
+        torch.manual_seed(43)
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), torch.nn.Tanh(), torch.nn.Linear(2, 1))
+>       bf = BayzFlow(model, guide=kind, guide_kwargs={'rank': 1} if kind == 'auto_lowrank' else {},
+                      deterministic_update_policy=policy)
+E       TypeError: BayzFlow.__init__() got an unexpected keyword argument 'deterministic_update_policy'
+
+tests/test_svi_integrity.py:17: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_svi_integrity.py::test_continuation_matches_uninterrupted_and_preserves_store_identity
+FAILED tests/test_svi_integrity.py::test_training_policy_and_updates[freeze]
+FAILED tests/test_svi_integrity.py::test_training_policy_and_updates[joint]
+FAILED tests/test_svi_integrity.py::test_explicit_reset_and_restart - TypeErr...
+FAILED tests/test_svi_integrity.py::test_summary_preserves_precision_and_matrix_shape
+FAILED tests/test_svi_integrity.py::test_native_guide_moments_and_sampling[auto_normal]
+FAILED tests/test_svi_integrity.py::test_native_guide_moments_and_sampling[auto_diag]
+FAILED tests/test_svi_integrity.py::test_native_guide_moments_and_sampling[auto_lowrank]
+FAILED tests/test_svi_integrity.py::test_native_guide_moments_and_sampling[auto_fullrank]
+FAILED tests/test_svi_integrity.py::test_external_store_identity_is_preserved
+10 failed, 1 passed in 2.35s

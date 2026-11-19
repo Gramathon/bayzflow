@@ -14,7 +14,6 @@ Design goals:
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os
@@ -43,6 +42,7 @@ from bayzflow.guides import GuideSpec, default_registry
 from bayzflow.guides._fullrank import check_fullrank_dimension
 
 _PYRO_STORE_LOCK = threading.RLock()
+_PYRO_STORE_CONTEXT = threading.local()
 
 
 @contextmanager
@@ -50,14 +50,24 @@ def _engine_param_store(engine):
     """Give one engine exclusive access to Pyro's process-global parameter store."""
     with _PYRO_STORE_LOCK:
         store = pyro.get_param_store()
-        previous = copy.deepcopy(store.get_state())
+        if getattr(engine, "_store_depth", 0):
+            if getattr(_PYRO_STORE_CONTEXT, "engine", None) is not engine:
+                raise RuntimeError("cannot reenter an engine while another engine owns the Pyro store")
+            yield
+            return
+        previous = store.get_state()
         store.clear()
         if engine._param_store_state is not None:
-            store.set_state(copy.deepcopy(engine._param_store_state))
+            store.set_state(engine._param_store_state)
+        engine._store_depth = 1
+        previous_engine = getattr(_PYRO_STORE_CONTEXT, "engine", None)
+        _PYRO_STORE_CONTEXT.engine = engine
         try:
             yield
         finally:
-            engine._param_store_state = copy.deepcopy(store.get_state())
+            engine._store_depth = 0
+            _PYRO_STORE_CONTEXT.engine = previous_engine
+            engine._param_store_state = store.get_state()
             store.clear()
             store.set_state(previous)
 
@@ -671,7 +681,14 @@ class BayzFlow:
         guide: str | GuideSpec = "auto_lowrank",
         guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
+        deterministic_update_policy: str = "joint",
     ):
+        if deterministic_update_policy not in {"freeze", "joint"}:
+            raise ValueError("deterministic_update_policy must be 'freeze' or 'joint'")
+        self.deterministic_update_policy = deterministic_update_policy
+        self.svi_steps = 0
+        self.parameter_updates: dict[str, float] = {}
+        self.optimization_config: dict[str, Any] = {}
         self.base_model = model
         self.bayes_model: nn.Module | None = None
         self.selected_module_names: list[str] = []
@@ -737,7 +754,28 @@ class BayzFlow:
             prior_scale=default_prior_scale,
             per_layer_scale=self.prior_scales if self.prior_scales else None,
         )
+        if self.deterministic_update_policy == "freeze":
+            self.bayes_model.requires_grad_(False)
         return self.bayes_model
+
+    def reset_optimizer(self) -> None:
+        """Keep posterior parameters and intentionally clear Adam's running state."""
+        if self.svi is None:
+            raise RuntimeError("SVI not set up")
+        self.optimizer = pyro.optim.Adam(dict(self.optimization_config))
+        self.svi.optim = self.optimizer
+
+    @_isolated_param_store
+    def diagnostics(self, batch: Any, max_dimension: int = 256) -> dict[str, Any]:
+        """Bounded JSON diagnostics; guide coordinates are not activation covariance."""
+        from pyro.util import get_rng_state, set_rng_state
+
+        from bayzflow.core.svi_diagnostics import engine_diagnostics
+        rng_state = get_rng_state()
+        try:
+            return engine_diagnostics(self, batch, max_dimension)
+        finally:
+            set_rng_state(rng_state)
 
     @_isolated_param_store
     def setup_svi(
@@ -750,6 +788,7 @@ class BayzFlow:
         guide: str | GuideSpec | None = None,
         guide_kwargs: dict[str, Any] | None = None,
         loss_fn: Callable[[torch.Tensor, Any], torch.Tensor] | None = None,
+        restart_posterior: bool = False,
     ):
         if self.bayes_model is None:
             raise RuntimeError("Bayesian model not built.")
@@ -757,7 +796,15 @@ class BayzFlow:
         if loss_from_logits_fn is None or predict_fn is None:
             raise TypeError("loss_from_logits_fn and predict_fn are required")
 
+        if restart_posterior:
+            pyro.clear_param_store()
+            self.training_history = []
+            self.svi_steps = 0
         model = self.bayes_model
+        if self.deterministic_update_policy == "freeze" and any(
+            p.requires_grad for p in model.parameters()
+        ):
+            raise ValueError("freeze policy violated: deterministic parameters remain trainable")
 
         def pyro_model(batch):
             pyro.module("bayes_model", model, update_module_params=False)
@@ -803,7 +850,10 @@ class BayzFlow:
         self.guide = self.guide_registry.create(pyro_model, spec)
         self.guide_spec = spec
         self._pyro_model = pyro_model
-        self.optimizer = pyro.optim.Adam({"lr": lr})
+        if not np.isfinite(lr) or lr <= 0:
+            raise ValueError("lr must be finite and positive")
+        self.optimization_config = {"lr": lr}
+        self.optimizer = pyro.optim.Adam(dict(self.optimization_config))
         self.svi = SVI(self._pyro_model, self.guide, self.optimizer, loss=Trace_ELBO())
 
     @_isolated_param_store
@@ -812,6 +862,7 @@ class BayzFlow:
         train_loader: torch.utils.data.DataLoader,
         num_epochs: int = 5,
         device: torch.device | None = None,
+        continue_optimizer: bool = False,
     ) -> list[float]:
         if self.svi is None:
             raise RuntimeError("SVI not set up. Call setup_svi(...) first.")
@@ -821,18 +872,56 @@ class BayzFlow:
         if device is not None:
             self.bayes_model.to(device)
 
+        if isinstance(num_epochs, bool) or not isinstance(num_epochs, int) or num_epochs < 0:
+            raise ValueError("num_epochs must be a non-negative integer")
+        if not isinstance(continue_optimizer, bool):
+            raise TypeError("continue_optimizer must be bool")
+        if continue_optimizer and getattr(self, "_loaded_without_optimizer", False):
+            raise ValueError("checkpoint has no optimizer state; use continue_optimizer=False")
+        if not continue_optimizer:
+            self.reset_optimizer()
+            self._loaded_without_optimizer = False
+        before = {name: p.detach().clone() for name, p in self.bayes_model.named_parameters()}
+        if self.deterministic_update_policy == "freeze" and any(
+            p.requires_grad for p in self.bayes_model.parameters()
+        ):
+            raise ValueError("freeze policy violated: deterministic parameters remain trainable")
+        guide_before = {
+            name: p.detach().clone()
+            for name, p in pyro.get_param_store().get_state()["params"].items()
+        }
         history = []
         for epoch in range(num_epochs):
             total = 0.0
             n = 0
             for batch in train_loader:
                 batch = _to_device_batch(batch, device)
-                total += float(self.svi.step(batch))
+                value = float(self.svi.step(batch))
+                if not np.isfinite(value):
+                    raise FloatingPointError("non-finite SVI loss; inspect model and guide")
+                if any(
+                    not torch.isfinite(p).all()
+                    for p in pyro.get_param_store().get_state()["params"].values()
+                ):
+                    raise FloatingPointError("non-finite SVI parameters")
+                total += value
+                self.svi_steps += 1
                 n += 1
             epoch_loss = total / max(n, 1)
             history.append(epoch_loss)
             print(f"[BayzFlow] Epoch {epoch+1}/{num_epochs}  ELBO: {epoch_loss:.4f}")
-        self.training_history = history
+        self.training_history.extend(history)
+        self.parameter_updates = {
+            name: float((p.detach() - before[name]).norm())
+            for name, p in self.bayes_model.named_parameters()
+        }
+        if self.deterministic_update_policy == "freeze" and any(self.parameter_updates.values()):
+            raise RuntimeError("frozen deterministic parameters changed")
+        self.guide_parameter_updates = {
+            name: float((p.detach() - guide_before[name]).norm()) if name in guide_before else None
+            for name, p in pyro.get_param_store().get_state()["params"].items()
+            if not name.startswith("bayes_model$$$")
+        }
         return list(history)
 
     @_isolated_param_store
@@ -918,12 +1007,16 @@ class BayzFlow:
         summary: dict[str, dict[str, Any]] = {}
         summary_bytes = 0
         for name, values in samples.items():
-            if not torch.is_tensor(values) or values.ndim < 1:
+            if not torch.is_tensor(values) or values.ndim < 1 or values.numel() == 0:
                 continue
-            flat = values.float().reshape(values.shape[0], -1)
-            output_bytes = 2 * values[0].numel() * 4 if values.shape[0] else 0
+            if values.shape[0] < 1 or not values.is_floating_point() or not torch.isfinite(values).all():
+                raise ValueError("posterior samples must be nonempty finite floating tensors")
+            flat = values.reshape(values.shape[0], -1)
+            if flat.dtype in (torch.float16, torch.bfloat16):
+                flat = flat.float()
+            output_bytes = 2 * values[0].numel() * values.element_size()
             if flat.shape[1] <= max_covariance_dimension:
-                output_bytes += flat.shape[1] * flat.shape[1] * 4
+                output_bytes += flat.shape[1] * flat.shape[1] * flat.element_size()
             summary_bytes += output_bytes
             if summary_bytes > max_summary_bytes:
                 raise ValueError(f"posterior summary exceeds the {max_summary_bytes}-byte limit")
@@ -1152,6 +1245,8 @@ class BayzFlow:
                 "model_identity": f"{type(self.base_model).__module__}.{type(self.base_model).__qualname__}",
                 "checkpoint_identity": checkpoint_identity,
                 "artifact_sha256": artifacts,
+                "deterministic_update_policy": self.deterministic_update_policy,
+                "optimizer_continuation": "not_saved",
                 "random_seed": seed,
                 "training_metrics": {"elbo_per_epoch": list(self.training_history)},
                 "experiment_metadata": serializable_metadata,
@@ -1238,6 +1333,8 @@ class BayzFlow:
             if self.guide_registry.validate(requested).identity != recorded.identity:
                 raise ValueError("requested guide does not match the guide recorded in this posterior")
             guide = recorded
+        if meta.get("deterministic_update_policy", "joint") != self.deterministic_update_policy:
+            raise ValueError("checkpoint deterministic update policy mismatch")
         self.setup_svi(loss_from_logits_fn=loss_from_logits_fn, predict_fn=predict_fn, lr=1e-3,
                        guide=guide)
 
@@ -1265,6 +1362,7 @@ class BayzFlow:
             "constraints": _deserialize_pyro_constraints(constraints_doc),
         })
         self.checkpoint_identity = artifact_identity
+        self._loaded_without_optimizer = True
 
         print(f"[BayzFlow] Loaded posterior from: {load_dir}")
 
@@ -1480,9 +1578,11 @@ class BayzFlow:
         guide: str | GuideSpec = "auto_lowrank",
         guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
+        deterministic_update_policy: str = "joint",
     ) -> BayzFlow:
         """Select layers, calibrate priors and build the Bayesian model without training."""
-        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
+        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry,
+                     deterministic_update_policy=deterministic_update_policy)
         if verbose:
             print("=== BayzFlow: candidate layers ===")
         candidates = engine.list_candidates()
@@ -1517,8 +1617,10 @@ class BayzFlow:
         guide: str | GuideSpec = "auto_lowrank",
         guide_kwargs: dict[str, Any] | None = None,
         guide_registry=default_registry,
+        deterministic_update_policy: str = "joint",
     ) -> BayzFlow:
-        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry)
+        engine = cls(model, guide=guide, guide_kwargs=guide_kwargs, guide_registry=guide_registry,
+                     deterministic_update_policy=deterministic_update_policy)
 
         if verbose:
             print("=== BayzFlow: candidate layers ===")

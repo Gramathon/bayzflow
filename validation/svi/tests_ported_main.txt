@@ -1,0 +1,20 @@
+.............................s..s...................                     [100%]
+=============================== warnings summary ===============================
+tests/test_experiment_runner.py::test_exp_runner_passes_yaml_guide_and_uses_engine_signatures
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/torch/cuda/__init__.py:241: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12040). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+    return torch._C._cuda_getDeviceCount() > 0
+
+tests/test_svi_integrity.py::test_training_policy_and_updates[freeze]
+tests/test_svi_integrity.py::test_checkpoint_load_declares_optimizer_limitation
+tests/test_svi_integrity.py::test_diagnostics_preserve_rng_and_freeze_detects_tampering
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/pyro/primitives.py:479: UserWarning: 0.weight was not registered in the param store because requires_grad=False. You can silence this warning by calling my_module.train(False)
+    warnings.warn(
+
+tests/test_svi_integrity.py::test_training_policy_and_updates[freeze]
+tests/test_svi_integrity.py::test_checkpoint_load_declares_optimizer_limitation
+tests/test_svi_integrity.py::test_diagnostics_preserve_rng_and_freeze_detects_tampering
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/pyro/primitives.py:479: UserWarning: 0.bias was not registered in the param store because requires_grad=False. You can silence this warning by calling my_module.train(False)
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+50 passed, 2 skipped, 7 warnings in 23.65s

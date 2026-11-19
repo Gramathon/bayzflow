@@ -1,0 +1,13 @@
+# Validation of the PR port onto current main
+
+The original investigation ran from commit `3a559b5343839c0dbb91cbdd1d05a4cb40925b25` and is preserved in local commit `3132f3f`. Before publishing, remote main was found to have advanced to `5b49923c75953f785ced40f81c025b735374e98a` (Bayzflow 0.2.1). The PR branch `engineering/svi-posterior-fidelity-main` ports only the SVI work onto that main commit in an isolated worktree. The original working directory and unrelated uncommitted work remain intact.
+
+The port retains main's existing full-rank admission guards, unit-lower-Cholesky checkpoint constraint handling, guide provenance checks, convolution namespacing, RNG preservation, CLI/MCP security, package version and release workflow. Merge resolution adds training policy and optimizer continuation around those implementations. New source and tests follow main's lint conventions; existing CI already runs every test in tests/, and now also lints the diagnostics module.
+
+Full suite on this port: **50 passed, 2 skipped**. The skips are optional MCP protocol tests because the local environment lacks the MCP extra. The lint command in CI, plus the new benchmark scripts and reference utility, passes. The original research-checkout counts (80 passed, one failure, one skip) remain a separately identified result; the frozen Phase5 research test is absent from current main and was not changed to pass.
+
+A fresh three-seed direct-Pyro/Gaussian comparison for the port is retained as `validation/svi/ported_main.json`. Its source hash identifies the PR engine, distinct from the historical `modified.json` identity. Coordinate-input checks, summary parity assertions and validation checksums are regenerated for the port. `provenance.json` continues to identify the original investigation source; `pr_provenance.json` identifies the port. Original numerical result files are retained. Text logs have trailing whitespace normalized for the PR; numerical data are unchanged.
+
+No E04–E08 evidence or EXPCON state was modified. These remain directly executed engineering tests, not independent E09 verification. The green local main-based suite does not establish broad posterior calibration or production release readiness. The proposed E09 plan still needs independent review, freezing and execution.
+
+The existing secret scanner flags provenance hashes as high-entropy strings. Reviewed 144 exact digest findings across 20 validation files: SHA256 source/array/artifact digests, the recorded base commit and the frozen-reference hash printed in test logs. Artifact checksums were recomputed and matched. Only these exact values were added to the existing reviewed baseline; detector settings and filters are unchanged.

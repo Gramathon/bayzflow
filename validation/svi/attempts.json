@@ -1,0 +1,14 @@
+{
+  "execution_kind": "direct engineering work, not an EXPCON campaign",
+  "failed_attempts": [
+    "pytest absent initially; installed pytest in writable checkout virtual environment",
+    "new regression tests before implementation: 10 failed, 1 passed",
+    "AutoNormal inspection utility used nonexistent getattr method; corrected to operator.attrgetter",
+    "multi-guide benchmark reused a model wrapped in place; corrected to fresh model per arm",
+    "plain full-suite collection: optional scipy absent, then conflicting pre-existing untracked research modules",
+    "tracked full suite: frozen Phase5 direction hash mismatch, independently reproduced on untouched source"
+  ],
+  "runtime_accounting": "Completed numerical rows retain measured elapsed runtimes including initialization. No total campaign wall-time claim is made for these engineering attempts.",
+  "historical_evidence_modified": false,
+  "expcon_experiments_executed": false
+}
