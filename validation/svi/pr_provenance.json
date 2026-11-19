@@ -1,0 +1,23 @@
+{
+  "base_commit": "5b49923c75953f785ced40f81c025b735374e98a",
+  "original_investigation_commit": "3132f3f",
+  "branch": "engineering/svi-posterior-fidelity-main",
+  "package_version_inherited": "0.2.1",
+  "python": "3.12.13 (main, Aug  7 2026, 02:25:39) [Clang 22.1.3 ]",
+  "source_sha256": {
+    "bayzflow/core/engine.py": "236940157d8fb4f930b6e6166f04946f6ce147cc939af97aeae94cc3ecd8abb3",
+    "bayzflow/core/svi_diagnostics.py": "0eb24f30722d8219108a2ba734f68235a9b1b4b56a2615af12b71a31848e37da",
+    "tests/test_svi_integrity.py": "e2ca32eeab910779a80c68319c02c830e27daa87d89e48cba14ad0461b1450bc",
+    "scripts/svi_gaussian_benchmark.py": "1bd8deed6c6d068bea19c697c28b541ef1ab07b40535035152e324c8d29c5e43",
+    "scripts/svi_record_inputs.py": "10628937b0e66c07b99d0b7961091a160cb6342c9bc4062e34b1a900645f4dc3",
+    "scripts/svi_summarize.py": "97b2c839e55ba778231bb22a3aa5cfd65cd68ae9ec3a99b2522d7294fb445965",
+    "validation/svi/reference.py": "3d515d7691d4ff3972efda6d95b939bb9a6593fa1be2a4b9c17ae367a107b733",
+    ".github/workflows/ci.yml": "77e7ad571342a69d874d97b881a92a64655018c7008d73f656368a594f34963f"
+  },
+  "tests": {
+    "passed": 50,
+    "skipped": 2,
+    "failed": 0
+  },
+  "expcon_verified": false
+}

@@ -1,0 +1,68 @@
+{
+  "derivation": "For Gaussian p and Gaussian diagonal q minimizing KL(q||p): mean_q=mean_p; variance_q[i]=1/precision_p[i,i]. This is the reverse-KL optimum, not the covariance-Frobenius optimum.",
+  "rows": [
+    {
+      "seed": 11,
+      "optimal_diagonal_covariance": [
+        [
+          0.0010596715775092983,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0012202178744776272,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0012953367875647667
+        ]
+      ],
+      "relative_covariance_error": 0.989879942195166
+    },
+    {
+      "seed": 23,
+      "optimal_diagonal_covariance": [
+        [
+          0.0012712894539388573,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0014909442047703649,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0012953367875647667
+        ]
+      ],
+      "relative_covariance_error": 0.9878958226435792
+    },
+    {
+      "seed": 37,
+      "optimal_diagonal_covariance": [
+        [
+          0.0013551415923648347,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0015571678758808701,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0012953367875647667
+        ]
+      ],
+      "relative_covariance_error": 0.9852915653569325
+    }
+  ]
+}

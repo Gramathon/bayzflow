@@ -1,0 +1,35 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________________ test_frozen_phase5_pairs_and_outputs_unchanged ________________
+
+    def test_frozen_phase5_pairs_and_outputs_unchanged():
+        path = Path("research/structural_epistemics/phase5/results/local/benchmark.json")
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+            "7c9b3bab6ade1ece362af987851c307a10684e29553c251faf6887116ad09f92"
+        )
+        records = original_records()
+        assert len(records) == 20
+        for record in records:
+>           reconstruct(record)
+
+tests/test_phase5_1.py:92:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+record = {'base_seed': 4, 'dataset_seed': 0, 'teacher_z': [-0.06154336407780647, 0.9734636545181274, -1.2898894548416138, -0.90...52], 'train_tokens': [[6, 0, 6, 7], [4, 4, 2, 8], [9, 5, 7, 6], [5, 8, 2, 10], [1, 5, 0, 11], [3, 2, 2, 10], ...], ...}
+device = 'cpu'
+
+    def reconstruct(record, device="cpu"):
+        base_seed, dataset_seed = record["base_seed"], record["dataset_seed"]
+        teacher = FourDirectionTeacher(base_seed, device)
+        train, heldout = draw_inputs(base_seed, dataset_seed)
+        train, heldout = train.to(teacher.device), heldout.to(teacher.device)
+        if train.tolist() != record["train_tokens"] or heldout.tolist() != record["heldout_tokens"]:
+            raise AssertionError("Phase 5 token split changed")
+        if teacher.direction_hash() != record["direction_hash"]:
+>           raise AssertionError("Phase 5 parameter directions changed")
+E           AssertionError: Phase 5 parameter directions changed
+
+/tmp/bayzflow-svi-baseline/bayzflow/research/structural_epistemics/phase5_1/frozen_pairs.py:35: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_phase5_1.py::test_frozen_phase5_pairs_and_outputs_unchanged
+1 failed in 1.85s

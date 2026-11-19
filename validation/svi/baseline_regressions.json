@@ -1,0 +1,7 @@
+{
+  "split_parameter_max_delta": 0.060684144496917725,
+  "covariance_shape": [],
+  "covariance_dtype": "torch.float32",
+  "covariance": 0.0,
+  "external_identity_preserved": false
+}

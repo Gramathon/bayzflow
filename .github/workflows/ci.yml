@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install uv ruff mypy
-      - run: ruff check bayzflow/guides bayzflow/cli.py bayzflow/mcp bayzflow/core/engine.py bayzflow/core/experiment.py bayzflow/examples/guide_benchmark.py tests examples/expcon
+      - run: ruff check bayzflow/guides bayzflow/cli.py bayzflow/mcp bayzflow/core/engine.py bayzflow/core/svi_diagnostics.py bayzflow/core/experiment.py bayzflow/examples/guide_benchmark.py tests examples/expcon
       - run: mypy --follow-imports=skip --ignore-missing-imports bayzflow/guides bayzflow/mcp
       - name: Build candidate from commit
         run: uv build

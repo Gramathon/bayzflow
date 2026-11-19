@@ -121,3 +121,9 @@ Version 0.2.0 is available as an [immutable GitHub release](https://github.com/G
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [docs/RELEASING.md](docs/RELEASING.md).
+
+SVI training policies, optimizer continuation and covariance interpretation are documented in
+[SVI training regimes](docs/engineering/SVI_TRAINING_REGIMES.md). The
+[posterior fidelity investigation](docs/engineering/POSTERIOR_FIDELITY_INVESTIGATION.md)
+compares the analytical Gaussian posterior, independent direct Pyro and Bayzflow;
+matching an implementation does not establish posterior accuracy.

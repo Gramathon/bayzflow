@@ -1,0 +1,20 @@
+..............................s.                                         [100%]
+=============================== warnings summary ===============================
+tests/test_svi_integrity.py::test_continuation_matches_uninterrupted_and_preserves_store_identity
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/torch/autograd/graph.py:1113: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12040). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /__w/pytorch/pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+
+tests/test_svi_integrity.py::test_training_policy_and_updates[freeze]
+tests/test_svi_integrity.py::test_checkpoint_load_declares_optimizer_limitation
+tests/test_svi_integrity.py::test_diagnostics_preserve_rng_and_freeze_detects_tampering
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/pyro/primitives.py:479: UserWarning: 0.weight was not registered in the param store because requires_grad=False. You can silence this warning by calling my_module.train(False)
+    warnings.warn(
+
+tests/test_svi_integrity.py::test_training_policy_and_updates[freeze]
+tests/test_svi_integrity.py::test_checkpoint_load_declares_optimizer_limitation
+tests/test_svi_integrity.py::test_diagnostics_preserve_rng_and_freeze_detects_tampering
+  /data/dev/repos/VScode/bayzflow/.venv/lib/python3.12/site-packages/pyro/primitives.py:479: UserWarning: 0.bias was not registered in the param store because requires_grad=False. You can silence this warning by calling my_module.train(False)
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+31 passed, 1 skipped, 7 warnings in 21.83s
